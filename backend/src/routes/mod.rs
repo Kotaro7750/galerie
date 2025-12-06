@@ -1,66 +1,41 @@
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+mod cors;
+mod state;
+mod telemetry;
 
 use anyhow::Error;
 use axum::{
-    Json, Router,
-    extract::{MatchedPath, State},
-    http::{HeaderValue, StatusCode},
+    extract::State,
+    http::StatusCode,
     middleware,
     routing::{get, post},
+    Json, Router,
 };
 use serde::Serialize;
-use tokio::{sync::RwLock, task};
+use tokio::task;
 use tower_http::{
-    cors::{AllowOrigin, Any, CorsLayer},
     services::{ServeDir, ServeFile},
-    trace::{MakeSpan, OnRequest, OnResponse, TraceLayer},
+    trace::TraceLayer,
 };
-use tracing::{Instrument, Span, field, instrument};
+use tracing::{instrument, Instrument};
 
 use crate::{
-    api::{self, ApiResponse, ApiResult, search, stream, thumbnails},
-    cache::{CacheSnapshot, CacheStore},
-    config::AppConfig,
+    api::{self, search, stream, thumbnails, ApiResponse, ApiResult},
     indexer::Indexer,
 };
 
-/// Shared application state cloned into each request handler.
-#[derive(Clone)]
-pub struct AppState {
-    pub config: Arc<AppConfig>,
-    pub cache_store: Arc<CacheStore>,
-    pub snapshot: Arc<RwLock<CacheSnapshot>>,
-    pub boot_instant: Instant,
-}
-
-impl AppState {
-    pub fn new(
-        config: Arc<AppConfig>,
-        cache_store: Arc<CacheStore>,
-        snapshot: Arc<RwLock<CacheSnapshot>>,
-    ) -> Self {
-        Self {
-            config,
-            cache_store,
-            snapshot,
-            boot_instant: Instant::now(),
-        }
-    }
-}
+pub use state::AppState;
+use telemetry::{HttpMakeSpan, LogOnRequest, LogOnResponse};
 
 /// Build the Axum router with shared layers and routes.
 pub fn router(state: AppState) -> Router {
-    let cors = build_cors_layer(&state.config.cors_allowed_origins);
+    let cors_layer = cors::build_cors_layer(&state.config.cors_allowed_origins);
 
     let api_routes = Router::new()
         .route("/media", get(search::media_search))
         .route("/media/{id}/thumbnail", get(thumbnails::media_thumbnail))
         .route("/media/{id}/stream", get(stream::media_stream))
         .route("/index/rebuild", post(trigger_rebuild))
-        .layer(cors)
+        .layer(cors_layer)
         .fallback(api::fallback_handler)
         .layer(middleware::from_fn(api::ensure_error_envelope))
         .layer(
@@ -82,35 +57,6 @@ pub fn router(state: AppState) -> Router {
         router.nest_service("/ui", frontend_service)
     } else {
         router
-    }
-}
-
-fn build_cors_layer(origins: &[String]) -> CorsLayer {
-    if origins.is_empty() {
-        return CorsLayer::new()
-            .allow_origin(Any)
-            .allow_methods(Any)
-            .allow_headers(Any);
-    }
-
-    let mut allowed = Vec::new();
-    for origin in origins {
-        match origin.parse::<HeaderValue>() {
-            Ok(value) => allowed.push(value),
-            Err(err) => tracing::warn!(%origin, %err, "invalid cors origin, skipping"),
-        }
-    }
-
-    if allowed.is_empty() {
-        CorsLayer::new()
-            .allow_origin(Any)
-            .allow_methods(Any)
-            .allow_headers(Any)
-    } else {
-        CorsLayer::new()
-            .allow_origin(AllowOrigin::list(allowed))
-            .allow_methods(Any)
-            .allow_headers(Any)
     }
 }
 
@@ -167,82 +113,10 @@ async fn trigger_rebuild(State(state): State<AppState>) -> ApiResponse<serde_jso
         }
     });
 
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(serde_json::json!({"status": "queued"})),
-    ))
-}
-
-#[derive(Clone)]
-struct HttpMakeSpan;
-
-impl<B> MakeSpan<B> for HttpMakeSpan {
-    fn make_span(&mut self, request: &axum::http::Request<B>) -> Span {
-        let method = request.method().clone();
-        let matched_path = request
-            .extensions()
-            .get::<MatchedPath>()
-            .map(|path| path.as_str())
-            .unwrap_or_else(|| request.uri().path());
-
-        let span = tracing::info_span!(
-            "http_request",
-            http.request.method = %method,
-            http.route = %matched_path,
-            url.path = request.uri().path(),
-            url.query = field::Empty,
-            http.response.status_code = field::Empty,
-            http.latency_ms = field::Empty
-        );
-
-        if let Some(query) = request.uri().query() {
-            span.record("url.query", &field::display(query));
-        }
-
-        span
-    }
-}
-
-#[derive(Clone)]
-struct LogOnRequest;
-
-impl<B> OnRequest<B> for LogOnRequest {
-    fn on_request(&mut self, request: &axum::http::Request<B>, span: &Span) {
-        tracing::info!(
-            parent: span,
-            http.request.method = %request.method(),
-            http.route = request
-                        .extensions()
-                        .get::<MatchedPath>()
-                        .map(|path| path.as_str())
-                        .unwrap_or_else(|| request.uri().path()),
-            url.path = %request.uri().path(),
-            "HTTP request received: {} {}",
-            request.method(),
-            request.uri().path()
-        );
-    }
-}
-
-#[derive(Clone)]
-struct LogOnResponse;
-
-impl<B> OnResponse<B> for LogOnResponse {
-    fn on_response(self, response: &axum::http::Response<B>, latency: Duration, span: &Span) {
-        let status_code = response.status().as_u16();
-
-        span.record("http.response.status_code", &field::display(status_code));
-        span.record("http.latency_ms", &field::display(latency.as_millis()));
-
-        tracing::info!(
-            parent: span,
-            http.latency_ms = %latency.as_millis(),
-            http.response.status_code = %status_code,
-            "HTTP request completed with status {} in {} ms",
-            status_code,
-            latency.as_millis()
-        );
-    }
+        Ok((
+            StatusCode::ACCEPTED,
+            Json(serde_json::json!({"status": "queued"})),
+        ))
 }
 
 #[cfg(test)]
@@ -254,6 +128,7 @@ mod tests {
     };
     use http_body_util::BodyExt;
     use serde_json::Value;
+    use std::sync::Arc;
     use std::path::PathBuf;
     use std::{fs, os::unix::fs::PermissionsExt, time::Duration};
     use tempfile::tempdir;

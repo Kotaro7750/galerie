@@ -13,14 +13,14 @@ Galarie is a DB-free media browser that walks a mounted filesystem, parses filen
 ## Repository Layout
 
 ```
-backend/     # Rust backend (cargo workspace already configured)
-frontend/    # React 18 + Vite SPA
+backend/       # Rust backend (cargo workspace already configured)
+frontend/      # React 18 + Vite SPA (componentized search flow)
 sample-media/  # Versioned PNG/GIF/MP4 fixtures used for tests/demos
-media/       # Empty mountpoint for your own media (gitignored)
-.devcontainer/  # Devcontainer definition + observability docker-compose
-Dockerfile   # Multi-stage build for production & devcontainer images
-Makefile     # Convenience targets shared by backend/frontend
-specs/       # Product, architecture, and task documents
+media/         # Empty mountpoint for your own media (gitignored)
+.devcontainer/ # Devcontainer definition + observability docker-compose
+Dockerfile     # Multi-stage build for production & devcontainer images
+Makefile       # Convenience targets shared by backend/frontend
+specs/         # Product, architecture, and task documents
 ```
 
 ## Quickstart (Devcontainer)
@@ -52,6 +52,11 @@ specs/       # Product, architecture, and task documents
 
 Opening the devcontainer automatically launches the observability compose stack defined under `.devcontainer/observability/`. If you prefer to run it manually, execute `docker compose -f .devcontainer/observability/docker-compose.yaml up -d`.
 
+## Backend Notes
+
+- Routing is split into `routes/` modules: `state.rs` (shared app state), `cors.rs` (CORS layer), and `telemetry.rs` (Axum trace spans/logs) which are composed in `routes/mod.rs`.
+- The filesystem indexer still lives in `indexer.rs`; it emits `IndexEvent`s consumed by `main.rs` to persist cache snapshots.
+
 ## Running the Backend
 
 Use the shared Make targets (they call `supervisord` within the devcontainer):
@@ -80,6 +85,11 @@ Key env vars:
 - `GALARIE_CACHE_DIR` – writable directory for `index.json` cache.
 - `OTEL_EXPORTER_OTLP_ENDPOINT` – points to the collector (default `http://otel-collector:4317` inside docker-compose).
 - `GALARIE_ENV`, `RUST_LOG`, `OTEL_SERVICE_NAME` for telemetry tuning (see `Dockerfile`).
+
+## Frontend Notes
+
+- The search page is composed from reusable pieces under `frontend/src/components`: `FilterBar` (tag/key-value input), `SearchResults` (grid + pagination), `MediaCard`, and `MediaPreviewOverlay`.
+- Filter helpers live in `utils/filterUtils.ts`; filter types in `types/filters.ts`.
 
 ## Running the Frontend
 

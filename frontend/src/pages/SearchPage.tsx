@@ -1,47 +1,15 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-} from 'react'
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardActions,
-  CardContent,
-  CardMedia,
-  Chip,
-  CircularProgress,
-  Divider,
-  IconButton,
-  InputAdornment,
-  Portal,
-  Snackbar,
-  Stack,
-  TextField,
-  Tooltip,
-  Typography,
-} from '@mui/material'
-import CloseRoundedIcon from '@mui/icons-material/CloseRounded'
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
-import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded'
-import OpenInNewRoundedIcon from '@mui/icons-material/OpenInNewRounded'
-import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded'
-import FullscreenRoundedIcon from '@mui/icons-material/FullscreenRounded'
-import AddRoundedIcon from '@mui/icons-material/AddRounded'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { Alert, Button, Card, CardContent, Snackbar, Stack } from '@mui/material'
 import { useInfiniteQuery } from '@tanstack/react-query'
 
-import type { MediaSummary, MediaTag } from '../types/media'
-import { fetchMedia } from '../services/mediaClient'
-import type { MediaSearchRequest } from '../services/mediaClient'
+import { FilterBar } from '../components/FilterBar'
+import { MediaPreviewOverlay } from '../components/MediaPreviewOverlay'
+import { SearchResults } from '../components/SearchResults'
 import { usePersistedFilters, type PersistedFilters } from '../hooks/usePersistedFilters'
-import { resolveStreamUrl, resolveThumbnailUrl } from '../utils/mediaUrls'
-
-type AttributeMap = Record<string, string[]>
+import type { MediaSearchRequest } from '../services/mediaClient'
+import { fetchMedia } from '../services/mediaClient'
+import type { MediaTag } from '../types/media'
+import { cloneAttributes, cloneTags, normalizeTag } from '../utils/filterUtils'
 
 type SearchPageProps = {
   apiBaseUrl: string
@@ -86,17 +54,8 @@ export function SearchPage({ apiBaseUrl }: SearchPageProps) {
       return hasMore ? lastPage.page + 1 : undefined
     },
   })
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetching,
-    isFetchingNextPage,
-    isError,
-    error,
-    refetch,
-    status,
-  } = searchQuery
+  const { data, fetchNextPage, hasNextPage, isFetching, isFetchingNextPage, isError, error, refetch, status } =
+    searchQuery
   const flattenedItems = data?.pages.flatMap((page) => page.items) ?? []
   const itemsCount = flattenedItems.length
   const totalResults = data?.pages[0]?.total ?? 0
@@ -233,9 +192,6 @@ export function SearchPage({ apiBaseUrl }: SearchPageProps) {
     }
   }
 
-  const attributeChips = useMemo(() => Object.entries(attributes), [attributes])
-  const hasAnyFilterChips = confirmedTags.length > 0 || attributeChips.length > 0
-
   useEffect(() => {
     if (!isError) return
     const id = window.setTimeout(() => setToastOpen(true), 0)
@@ -263,182 +219,36 @@ export function SearchPage({ apiBaseUrl }: SearchPageProps) {
     <Stack spacing={4} sx={{ py: { xs: 4, md: 6 } }}>
       <Card variant="outlined">
         <CardContent>
-          <Stack spacing={3}>
-            <Stack spacing={2}>
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
-                <TextField
-                  fullWidth
-                  label="Tag or key"
-                  placeholder="e.g. nature or camera"
-                  value={tagDraft}
-                  onChange={(event) => setTagDraft(event.target.value)}
-                  onKeyDown={handleTagKeyDown}
-                  inputRef={tagInputRef}
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <Tooltip title={tagGuidance}>
-                          <IconButton
-                            size="small"
-                            edge="end"
-                            aria-label="Tag entry tips"
-                            tabIndex={-1}
-                            disableRipple
-                            disableFocusRipple
-                          >
-                            <InfoOutlinedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                <TextField
-                  fullWidth
-                  label="Value (optional)"
-                  placeholder="e.g. nikon"
-                  value={attrValue}
-                  onChange={(event) => setAttrValue(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      handleCommitTagOrAttribute()
-                    }
-                  }}
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <Tooltip title={valueGuidance}>
-                          <IconButton
-                            size="small"
-                            edge="end"
-                            aria-label="Value usage tips"
-                            tabIndex={-1}
-                            disableRipple
-                            disableFocusRipple
-                          >
-                            <InfoOutlinedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Tooltip title={attrValue.trim() ? 'Add key:value filter' : 'Add tag'}>
-                    <span>
-                      <IconButton
-                        color="primary"
-                        onClick={handleCommitTagOrAttribute}
-                        disabled={!tagDraft.trim()}
-                        sx={{ alignSelf: 'center' }}
-                      >
-                        <AddRoundedIcon />
-                      </IconButton>
-                    </span>
-                  </Tooltip>
-                </Box>
-              </Stack>
-              {hasAnyFilterChips && (
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                  {confirmedTags.map((tag) => (
-                    <Chip
-                      key={tag}
-                      label={tag}
-                      color="secondary"
-                      variant="outlined"
-                      onDelete={() => handleRemoveTag(tag)}
-                      sx={{ mb: 1 }}
-                    />
-                  ))}
-                  {attributeChips.flatMap(([key, values]) =>
-                    values.map((value) => (
-                      <Chip
-                        key={`${key}-${value}`}
-                        label={`${key}:${value}`}
-                        color="primary"
-                        variant="outlined"
-                        onDelete={() => handleRemoveAttribute(key, value)}
-                        sx={{ mb: 1 }}
-                      />
-                    )),
-                  )}
-                </Stack>
-              )}
-            </Stack>
-
-          </Stack>
+          <FilterBar
+            tagDraft={tagDraft}
+            attrValue={attrValue}
+            confirmedTags={confirmedTags}
+            attributes={attributes}
+            tagGuidance={tagGuidance}
+            valueGuidance={valueGuidance}
+            tagInputRef={tagInputRef}
+            onTagDraftChange={setTagDraft}
+            onAttrValueChange={setAttrValue}
+            onCommit={handleCommitTagOrAttribute}
+            onTagKeyDown={handleTagKeyDown}
+            onRemoveTag={handleRemoveTag}
+            onRemoveAttribute={handleRemoveAttribute}
+          />
         </CardContent>
       </Card>
 
-      <Card variant="outlined">
-        <CardContent>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Results ({totalResults})
-            </Typography>
-            {(isInitialLoading || isRefreshing) && (
-              <Stack direction="row" spacing={1} alignItems="center" color="text.secondary">
-                <CircularProgress size={18} thickness={5} />
-                <Typography variant="body2">
-                  {isInitialLoading ? 'Loading media…' : 'Fetching latest media…'}
-                </Typography>
-              </Stack>
-            )}
-          </Stack>
-          <Divider sx={{ mb: 2 }} />
-          {isInitialLoading ? (
-            <Stack alignItems="center" spacing={2} py={6}>
-              <CircularProgress />
-              <Typography variant="body2" color="text.secondary">
-                Loading catalog…
-              </Typography>
-            </Stack>
-          ) : flattenedItems.length === 0 ? (
-            <Alert severity="info">No media matched. Add filters or try browsing without tags.</Alert>
-          ) : (
-            <>
-              <Box
-                sx={{
-                  display: 'grid',
-                  gap: 2,
-                  gridTemplateColumns: {
-                    xs: 'repeat(1, minmax(0, 1fr))',
-                    sm: 'repeat(2, minmax(0, 1fr))',
-                    md: 'repeat(3, minmax(0, 1fr))',
-                    lg: 'repeat(4, minmax(0, 1fr))',
-                  },
-                }}
-              >
-                {flattenedItems.map((media, index) => (
-                  <Box key={media.id}>
-                    <MediaCard
-                      media={media}
-                      apiBaseUrl={apiBaseUrl}
-                      onPreview={() => openPreviewAt(index)}
-                      onTagSelect={handleAppendTagFromCard}
-                    />
-                  </Box>
-                ))}
-              </Box>
-              <Box ref={loadMoreRef} sx={{ height: 8 }} />
-              {isFetchingNextPage && (
-                <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" mt={3}>
-                  <CircularProgress size={18} thickness={5} />
-                  <Typography variant="body2" color="text.secondary">
-                    Loading more…
-                  </Typography>
-                </Stack>
-              )}
-              {!hasNextPage && flattenedItems.length > 0 && (
-                <Typography variant="caption" color="text.secondary" display="block" textAlign="center" mt={3}>
-                  End of results
-                </Typography>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+      <SearchResults
+        totalResults={totalResults}
+        items={flattenedItems}
+        apiBaseUrl={apiBaseUrl}
+        loadMoreRef={loadMoreRef}
+        isInitialLoading={isInitialLoading}
+        isRefreshing={isRefreshing}
+        isFetchingNextPage={isFetchingNextPage}
+        hasNextPage={hasNextPage}
+        onPreview={openPreviewAt}
+        onTagSelect={handleAppendTagFromCard}
+      />
 
       <Snackbar
         open={toastOpen}
@@ -478,345 +288,9 @@ export function SearchPage({ apiBaseUrl }: SearchPageProps) {
   )
 }
 
-type MediaCardProps = {
-  media: MediaSummary
-  apiBaseUrl: string
-  onPreview: () => void
-  onTagSelect: (tag: MediaTag) => void
-}
-
-function MediaCard({ media, apiBaseUrl, onPreview, onTagSelect }: MediaCardProps) {
-  const thumbnailSrc = resolveThumbnailUrl(media.thumbnailPath, apiBaseUrl)
-  const inlineStreamUrl = resolveStreamUrl(apiBaseUrl, media.id)
-  const downloadUrl = resolveStreamUrl(apiBaseUrl, media.id, 'attachment')
-
-  const openNewTab = () => {
-    if (typeof window === 'undefined') return
-    window.open(inlineStreamUrl, '_blank', 'noopener,noreferrer')
-  }
-
-  return (
-    <Card
-      variant="outlined"
-      sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}
-    >
-      <CardMedia
-        component="img"
-        height={180}
-        image={thumbnailSrc}
-        alt={media.relativePath}
-        onClick={onPreview}
-        sx={{ cursor: 'pointer' }}
-        onError={(event) => {
-          ;(event.target as HTMLImageElement).src = 'https://placehold.co/320x200?text=Media'
-        }}
-      />
-      <CardContent sx={{ flexGrow: 1 }}>
-        <Stack spacing={1}>
-          <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Box sx={{ minWidth: 0 }}>
-              <Tooltip title={media.relativePath}>
-                <Typography variant="subtitle2" noWrap sx={{ fontWeight: 600 }}>
-                  {media.relativePath}
-                </Typography>
-              </Tooltip>
-            </Box>
-            <Chip size="small" label={media.mediaType.toUpperCase()} sx={{ textTransform: 'uppercase' }} />
-          </Stack>
-          <Typography variant="caption" color="text.secondary">
-            {media.filesize.toLocaleString()} bytes
-          </Typography>
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            {media.tags.map((tag) => (
-              <Chip
-                key={tag.rawToken}
-                label={tag.value ? `${tag.name}:${tag.value}` : tag.name}
-                size="small"
-                onClick={() => onTagSelect(tag)}
-                sx={{ mb: 0.5, cursor: 'pointer' }}
-              />
-            ))}
-          </Stack>
-        </Stack>
-      </CardContent>
-      <CardActions sx={{ justifyContent: 'flex-end', pt: 0 }}>
-        <Tooltip title="Preview">
-          <IconButton aria-label="Preview" onClick={onPreview}>
-            <VisibilityRoundedIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Open in new tab">
-          <IconButton aria-label="Open in new tab" onClick={openNewTab}>
-            <OpenInNewRoundedIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Download">
-          <IconButton
-            aria-label="Download"
-            component="a"
-            href={downloadUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <DownloadRoundedIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      </CardActions>
-    </Card>
-  )
-}
-
-type MediaPreviewOverlayProps = {
-  media: MediaSummary | null
-  apiBaseUrl: string
-  onClose: () => void
-  onNavigate: (direction: 'next' | 'previous') => void
-  onTagSelect: (tag: MediaTag) => void
-}
-
-function MediaPreviewOverlay({ media, apiBaseUrl, onClose, onNavigate, onTagSelect }: MediaPreviewOverlayProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  const swipeStartX = useRef<number | null>(null)
-
-  useEffect(() => {
-    const handleKeyDown = (event: WindowEventMap['keydown']) => {
-      if (event.key === 'Escape') {
-        onClose()
-        return
-      }
-      if (event.key === 'ArrowRight') {
-        event.preventDefault()
-        onNavigate('next')
-        return
-      }
-      if (event.key === 'ArrowLeft') {
-        event.preventDefault()
-        onNavigate('previous')
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, onNavigate])
-
-  if (!media || typeof document === 'undefined') {
-    return null
-  }
-
-  const inlineStreamUrl = resolveStreamUrl(apiBaseUrl, media.id)
-  const downloadUrl = resolveStreamUrl(apiBaseUrl, media.id, 'attachment')
-
-  const handleFullscreen = () => {
-    const node = containerRef.current
-    if (node?.requestFullscreen) {
-      node
-        .requestFullscreen()
-        .catch(() => {
-          /* ignore */
-        })
-    }
-  }
-
-  const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onClose()
-    }
-  }
-
-  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    swipeStartX.current = event.clientX
-  }
-
-  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (swipeStartX.current === null) {
-      return
-    }
-    const deltaX = event.clientX - swipeStartX.current
-    const threshold = 40
-    if (Math.abs(deltaX) > threshold) {
-      if (deltaX > 0) {
-        onNavigate('previous')
-      } else {
-        onNavigate('next')
-      }
-    }
-    swipeStartX.current = null
-  }
-
-  const handlePointerLeave = () => {
-    swipeStartX.current = null
-  }
-
-  return (
-    <Portal>
-      <Box
-        onClick={handleBackdropClick}
-        sx={{
-          position: 'fixed',
-          inset: 0,
-          bgcolor: 'rgba(8, 15, 30, 0.85)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: (theme) => theme.zIndex.modal,
-          transition: 'opacity 120ms ease',
-        }}
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerLeave}
-        onPointerCancel={handlePointerLeave}
-      >
-        <Card
-          ref={containerRef}
-          sx={{
-            width: 'min(90vw, 960px)',
-            maxHeight: '90vh',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
-            p: 3,
-          }}
-        >
-          <Stack direction="row" alignItems="center" justifyContent="space-between">
-            <Stack spacing={0.5}>
-              <Typography variant="subtitle1" fontWeight={600} noWrap>
-                {media.relativePath}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {media.mediaType.toUpperCase()} · {media.filesize.toLocaleString()} bytes
-              </Typography>
-            </Stack>
-            <IconButton aria-label="Close preview" onClick={onClose} size="small">
-              <CloseRoundedIcon />
-            </IconButton>
-          </Stack>
-
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            {media.tags.map((tag) => (
-              <Chip
-                key={`${media.id}-${tag.rawToken}`}
-                label={tag.value ? `${tag.name}:${tag.value}` : tag.name}
-                size="small"
-                onClick={() => onTagSelect(tag)}
-                sx={{ cursor: 'pointer' }}
-              />
-            ))}
-          </Stack>
-
-          <Box
-            sx={{
-              flexGrow: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: { xs: 260, md: 380 },
-              bgcolor: 'grey.900',
-              borderRadius: 2,
-              overflow: 'hidden',
-            }}
-          >
-            {renderPreviewMedia(media, inlineStreamUrl)}
-          </Box>
-
-          <Stack direction="row" spacing={1} justifyContent="flex-end">
-            <Tooltip title="Fullscreen">
-              <IconButton aria-label="Fullscreen" onClick={handleFullscreen}>
-                <FullscreenRoundedIcon />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Open in new tab">
-              <IconButton
-                aria-label="Open in new tab"
-                component="a"
-                href={inlineStreamUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <OpenInNewRoundedIcon />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Download">
-              <IconButton
-                aria-label="Download"
-                component="a"
-                href={downloadUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <DownloadRoundedIcon />
-              </IconButton>
-            </Tooltip>
-          </Stack>
-        </Card>
-      </Box>
-    </Portal>
-  )
-}
-
-function renderPreviewMedia(media: MediaSummary, streamUrl: string) {
-  const commonStyles = {
-    maxWidth: '100%',
-    maxHeight: '80vh',
-  }
-
-  switch (media.mediaType) {
-    case 'image':
-    case 'gif':
-      return (
-        <Box
-          component="img"
-          src={streamUrl}
-          alt={media.relativePath}
-          sx={{ ...commonStyles, objectFit: 'contain' }}
-        />
-      )
-    case 'video':
-      return (
-        <Box component="video" src={streamUrl} controls autoPlay muted loop sx={commonStyles} />
-      )
-    case 'audio':
-      return (
-        <Stack spacing={2} alignItems="center" width="100%">
-          <Typography variant="body2" color="text.secondary">
-            Audio preview
-          </Typography>
-          <audio src={streamUrl} controls autoPlay style={{ width: '100%' }} />
-        </Stack>
-      )
-    case 'pdf':
-      return (
-        <Box
-          component="iframe"
-          src={streamUrl}
-          sx={{ border: 0, width: '100%', height: '70vh', bgcolor: 'white' }}
-        />
-      )
-    default:
-      return (
-        <Stack spacing={2} alignItems="center">
-          <Typography color="text.secondary">
-            Preview not available. Use Open or Download to view this media.
-          </Typography>
-        </Stack>
-      )
-  }
-}
-
 function resolveErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message
   }
   return 'Unable to load media results'
-}
-
-function cloneAttributes(source: AttributeMap): AttributeMap {
-  const entries = Object.entries(source).map(([key, values]) => [key, [...values]])
-  return Object.fromEntries(entries)
-}
-
-function cloneTags(source: string[]): string[] {
-  return [...source]
-}
-
-function normalizeTag(value: string): string {
-  return value.trim().toLowerCase()
 }
