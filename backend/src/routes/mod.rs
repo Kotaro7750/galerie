@@ -134,8 +134,10 @@ mod tests {
     use tempfile::tempdir;
     use tokio::time::timeout;
     use tower::ServiceExt;
+    use tokio::sync::RwLock;
 
-    use crate::config::{LogConfig, OtelConfig};
+    use crate::cache::{CacheSnapshot, CacheStore};
+    use crate::config::{AppConfig, LogConfig, OtelConfig};
 
     fn sample_media_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../sample-media")
