@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, num::NonZeroUsize};
 
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::{Query, State, rejection::QueryRejection},
 };
 use serde::Deserialize;
 
@@ -16,9 +16,9 @@ use crate::{
 #[serde(rename_all = "camelCase")]
 pub struct RawSearchParams {
     pub tags: Option<String>,
-    pub page: Option<usize>,
+    pub page: Option<NonZeroUsize>,
     #[serde(rename = "pageSize")]
-    pub page_size: Option<usize>,
+    pub page_size: Option<NonZeroUsize>,
     #[serde(flatten)]
     pub rest: HashMap<String, String>,
 }
@@ -34,16 +34,23 @@ pub struct MediaSearchResponse {
 
 pub async fn media_search(
     State(state): State<AppState>,
-    Query(params): Query<RawSearchParams>,
+    query: Result<Query<RawSearchParams>, QueryRejection>,
 ) -> ApiResult<MediaSearchResponse> {
+    let Query(params) = query.map_err(|_| ApiError::bad_request("invalid query parameters"))?;
     let tags = parse_tags(params.tags.as_deref()).map_err(|msg| ApiError::bad_request(msg))?;
 
     let attributes = parse_attributes(&params.rest);
+    let page = params
+        .page
+        .unwrap_or_else(|| NonZeroUsize::new(1).expect("nonzero"));
+    let page_size = params
+        .page_size
+        .unwrap_or_else(|| NonZeroUsize::new(60).expect("nonzero"));
     let query = SearchQuery::new(
         tags,
         attributes,
-        params.page.unwrap_or(1),
-        params.page_size.unwrap_or(60),
+        page,
+        page_size,
     );
     let snapshot = state.snapshot.read().await;
     let result = SearchService::search(&snapshot, &query);

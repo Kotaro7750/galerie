@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    num::NonZeroUsize,
+};
 
 use tracing::instrument;
 
@@ -20,8 +23,8 @@ impl SearchQuery {
     pub fn new(
         tags: Vec<String>,
         attributes: HashMap<String, Vec<String>>,
-        page: usize,
-        page_size: usize,
+        page: NonZeroUsize,
+        page_size: NonZeroUsize,
     ) -> Self {
         let required_tags = tags.into_iter().filter_map(normalize_token).collect();
 
@@ -42,8 +45,8 @@ impl SearchQuery {
         Self {
             required_tags,
             attribute_filters,
-            page: normalize_page(page),
-            page_size: normalize_page_size(page_size),
+            page: page.get(),
+            page_size: page_size.get().min(MAX_PAGE_SIZE),
         }
     }
 
@@ -181,18 +184,6 @@ fn normalize_token<S: AsRef<str>>(token: S) -> Option<String> {
     }
 }
 
-fn normalize_page(page: usize) -> usize {
-    if page == 0 { 1 } else { page }
-}
-
-fn normalize_page_size(page_size: usize) -> usize {
-    if page_size == 0 {
-        DEFAULT_PAGE_SIZE
-    } else {
-        page_size.min(MAX_PAGE_SIZE)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,7 +199,12 @@ mod tests {
         let snapshot = fixture_snapshot();
         let mut attributes = HashMap::new();
         attributes.insert("rating".into(), vec!["5".into()]);
-        let query = SearchQuery::new(vec!["sunset".into(), "coast".into()], attributes, 1, 10);
+        let query = SearchQuery::new(
+            vec!["sunset".into(), "coast".into()],
+            attributes,
+            std::num::NonZeroUsize::new(1).unwrap(),
+            std::num::NonZeroUsize::new(10).unwrap(),
+        );
         let result = SearchService::search(&snapshot, &query);
         assert_eq!(result.total, 1);
         assert_eq!(result.items[0].id, "sunset_A");
@@ -219,7 +215,12 @@ mod tests {
         let snapshot = fixture_snapshot();
         let mut attributes = HashMap::new();
         attributes.insert("rating".into(), vec!["4".into(), "3".into()]);
-        let query = SearchQuery::new(Vec::new(), attributes, 1, 10);
+        let query = SearchQuery::new(
+            Vec::new(),
+            attributes,
+            std::num::NonZeroUsize::new(1).unwrap(),
+            std::num::NonZeroUsize::new(10).unwrap(),
+        );
         let result = SearchService::search(&snapshot, &query);
         assert_eq!(result.total, 3);
         let ids: HashSet<_> = result.items.iter().map(|m| m.id.as_str()).collect();
@@ -231,7 +232,12 @@ mod tests {
     #[test]
     fn paginates_matches() {
         let snapshot = fixture_snapshot();
-        let query = SearchQuery::new(vec!["sunset".into()], HashMap::new(), 2, 1);
+        let query = SearchQuery::new(
+            vec!["sunset".into()],
+            HashMap::new(),
+            std::num::NonZeroUsize::new(2).unwrap(),
+            std::num::NonZeroUsize::new(1).unwrap(),
+        );
         let result = SearchService::search(&snapshot, &query);
         assert_eq!(result.total, 2);
         assert_eq!(result.items.len(), 1);
