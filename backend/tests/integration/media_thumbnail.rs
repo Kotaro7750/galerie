@@ -4,7 +4,7 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use serde_json::Value;
-use galarie_backend::indexer::MediaType;
+use galarie_backend::media::MediaType;
 
 use super::support::IntegrationTestApp;
 

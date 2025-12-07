@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{process::Command, task, time::timeout};
 use tracing::instrument;
 
-use crate::indexer::MediaType;
+use crate::media::MediaType;
 
 #[allow(dead_code)]
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);

@@ -30,7 +30,7 @@ pub async fn media_thumbnail(
     let size = params.size.unwrap_or(ThumbnailSize::Medium);
 
     let spec = {
-        let snapshot = state.snapshot.read().await;
+        let snapshot = state.cache.read_snapshot().await;
         snapshot
             .media
             .iter()
@@ -74,9 +74,9 @@ pub async fn media_thumbnail(
 mod tests {
     use super::*;
     use crate::{
-        cache::CacheSnapshot,
+        cache::{Cache, CacheSnapshot},
         config::{AppConfig, LogConfig, OtelConfig},
-        indexer::{MediaFile, MediaType},
+        media::{MediaFile, MediaType},
         routes::AppState,
         tags::{Tag, TagKind},
     };
@@ -89,7 +89,6 @@ mod tests {
     use image::{DynamicImage, ImageBuffer, Rgb};
     use std::{collections::HashMap as Map, net::SocketAddr, sync::Arc};
     use tempfile::tempdir;
-    use tokio::sync::RwLock;
     use tower::ServiceExt;
 
     #[tokio::test]
@@ -184,9 +183,15 @@ mod tests {
             cors_allowed_origins: Vec::new(),
             frontend_dist_dir: None,
         });
-        let cache_store = Arc::new(crate::cache::CacheStore::new(&cache_dir));
         let snapshot = CacheSnapshot::new(vec![media]);
-        AppState::new(config, cache_store, Arc::new(RwLock::new(snapshot)))
+        AppState::new(
+            config.clone(),
+            Arc::new(Cache::new_with_snapshot(
+                config.media_root.clone(),
+                config.cache_dir.clone(),
+                snapshot,
+            )),
+        )
     }
 
     fn simple_tag(name: &str) -> Tag {

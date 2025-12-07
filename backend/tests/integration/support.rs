@@ -1,23 +1,18 @@
-use std::{
-    net::SocketAddr,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 use axum::{Router, body::Body, http::Request};
 use galarie_backend::{
-    cache::{CacheSnapshot, CacheStore},
+    cache::Cache,
     config::{AppConfig, LogConfig, OtelConfig},
-    indexer::{Indexer, MediaFile, MediaType},
+    media::{MediaFile, MediaType},
     routes::{self, AppState},
 };
 use tempfile::tempdir;
-use tokio::sync::RwLock;
 use tower::ServiceExt;
 
 pub struct IntegrationTestApp {
     pub router: Router,
-    pub snapshot: Arc<RwLock<CacheSnapshot>>,
+    pub cache: Arc<Cache>,
     pub media_root: PathBuf,
 }
 
@@ -30,24 +25,21 @@ impl IntegrationTestApp {
             cache_dir.path().to_path_buf(),
         ));
 
-        let cache_store = Arc::new(CacheStore::new(cache_dir.path()));
-        let snapshot = cache_store
-            .load_or_rebuild(|| Indexer::scan_once(&media_root))
-            .expect("cache rebuild");
-        let snapshot_state = Arc::new(RwLock::new(snapshot));
-
-        let state = AppState::new(config, cache_store, snapshot_state.clone());
+        let cache = Arc::new(
+            Cache::new(config.media_root.clone(), config.cache_dir.clone()).expect("cache init"),
+        );
+        let state = AppState::new(config.clone(), cache.clone());
         let router = routes::router(state);
 
         Self {
             router,
-            snapshot: snapshot_state,
+            cache,
             media_root,
         }
     }
 
     pub async fn media_by_type(&self, media_type: MediaType) -> MediaFile {
-        let snapshot = self.snapshot.read().await;
+        let snapshot = self.cache.read_snapshot().await;
         snapshot
             .media
             .iter()
@@ -57,7 +49,11 @@ impl IntegrationTestApp {
     }
 
     pub async fn request(&self, request: Request<Body>) -> axum::response::Response {
-        self.router.clone().oneshot(request).await.expect("router response")
+        self.router
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("router response")
     }
 }
 
@@ -65,7 +61,7 @@ pub fn sample_media_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../sample-media")
 }
 
-fn test_config(media_root: PathBuf, cache_dir: PathBuf) -> AppConfig {
+pub fn test_config(media_root: PathBuf, cache_dir: PathBuf) -> AppConfig {
     AppConfig {
         media_root,
         cache_dir,
@@ -77,8 +73,23 @@ fn test_config(media_root: PathBuf, cache_dir: PathBuf) -> AppConfig {
             disable_traces: true,
             disable_logs: true,
         },
-        log: LogConfig { level: "info".into() },
+        log: LogConfig {
+            level: "info".into(),
+        },
         cors_allowed_origins: Vec::new(),
         frontend_dist_dir: None,
     }
+}
+
+pub fn build_router_with_cache(
+    media_root: PathBuf,
+    cache_dir: PathBuf,
+) -> (Router, Arc<Cache>) {
+    let config = Arc::new(test_config(media_root.clone(), cache_dir.clone()));
+    let cache = Arc::new(
+        Cache::new(media_root, cache_dir).expect("cache init"),
+    );
+    let state = AppState::new(config, cache.clone());
+    let router = routes::router(state);
+    (router, cache)
 }

@@ -1,14 +1,13 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use galarie_backend::{
-    cache::CacheStore,
+    cache::Cache,
     config::AppConfig,
-    indexer::{IndexEvent, Indexer, IndexerConfig},
     o11y,
     routes::{self, AppState},
 };
-use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -17,52 +16,12 @@ async fn main() -> Result<()> {
 
     tracing::info!("starting Galarie backend with config {:?}", config);
 
-    let cache_store = Arc::new(CacheStore::new(config.cache_dir.clone()));
     let media_root_for_cache = config.media_root.clone();
-    let initial_snapshot =
-        cache_store.load_or_rebuild(|| Indexer::scan_once(&media_root_for_cache))?;
-    let snapshot_state = Arc::new(RwLock::new(initial_snapshot));
 
-    let state = AppState::new(config.clone(), cache_store.clone(), snapshot_state.clone());
-    let (indexer_handle, mut index_events) =
-        Indexer::spawn(IndexerConfig::new(config.media_root.clone()));
+    let cache = Arc::new(Cache::new(media_root_for_cache, config.cache_dir.clone())?);
 
-    let cache_store_for_task = cache_store.clone();
-    let snapshot_state_for_task = snapshot_state.clone();
-    tokio::spawn(async move {
-        while let Some(event) = index_events.recv().await {
-            match event {
-                IndexEvent::Snapshot {
-                    files,
-                    duration,
-                    scanned_at,
-                } => {
-                    let elapsed_ms = duration.as_millis();
-                    let file_count = files.len();
-
-                    tracing::info!(
-                        elapsed_ms,
-                        file_count = file_count,
-                        scanned_at = %scanned_at.to_rfc3339(),
-                        "filesystem scan complete in {elapsed_ms} ms, found {file_count} files",
-                    );
-
-                    match cache_store_for_task.persist(files) {
-                        Ok(snapshot) => {
-                            *snapshot_state_for_task.write().await = snapshot.clone();
-                            tracing::info!("filesystem scan persisted to cache");
-                        }
-                        Err(err) => {
-                            tracing::error!(error = %err, "failed to persist cache snapshot");
-                        }
-                    }
-                }
-                IndexEvent::Error { message } => {
-                    tracing::warn!(%message, "indexer error");
-                }
-            }
-        }
-    });
+    let state = AppState::new(config.clone(), cache.clone());
+    let abort_sync_loop = cache.launch_sync_loop(Duration::from_secs(30));
 
     let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
     tracing::info!(addr = %config.listen_addr, "HTTP server listening");
@@ -72,7 +31,7 @@ async fn main() -> Result<()> {
         .await?;
 
     // Ensure the indexer task stops when the server exits.
-    indexer_handle.abort();
+    abort_sync_loop();
 
     Ok(())
 }

@@ -7,7 +7,7 @@ use axum::{
         header::{ACCEPT_RANGES, CONTENT_RANGE, CONTENT_TYPE, ETAG},
     },
 };
-use galarie_backend::indexer::MediaType;
+use galarie_backend::media::MediaType;
 use http_body_util::BodyExt;
 use tokio::fs;
 

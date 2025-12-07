@@ -5,7 +5,7 @@ use std::{
 
 use tracing::instrument;
 
-use crate::{cache::CacheSnapshot, indexer::MediaFile, tags::TagKind};
+use crate::{cache::CacheSnapshot, media::MediaFile, tags::TagKind};
 
 const DEFAULT_PAGE_SIZE: usize = 60;
 const MAX_PAGE_SIZE: usize = 200;
@@ -189,7 +189,7 @@ mod tests {
     use super::*;
     use crate::{
         cache::CacheSnapshot,
-        indexer::MediaType,
+        media::MediaType,
         tags::{Tag, TagKind},
     };
     use chrono::Utc;

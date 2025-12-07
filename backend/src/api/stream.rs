@@ -26,7 +26,7 @@ use tracing::instrument;
 
 use crate::{
     api::{ApiError, ErrorCode},
-    indexer::{MediaFile, MediaType},
+    media::{MediaFile, MediaType},
     routes::AppState,
 };
 
@@ -63,7 +63,7 @@ pub async fn media_stream(
     }
 
     let media = {
-        let snapshot = state.snapshot.read().await;
+        let snapshot = state.cache.read_snapshot().await;
         snapshot
             .media
             .iter()

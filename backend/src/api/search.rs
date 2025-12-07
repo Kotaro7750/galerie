@@ -8,6 +8,7 @@ use serde::Deserialize;
 
 use crate::{
     api::{ApiError, ApiResult},
+    media::MediaFile,
     routes::AppState,
     services::search::{SearchQuery, SearchResult, SearchService},
 };
@@ -26,7 +27,7 @@ pub struct RawSearchParams {
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaSearchResponse {
-    pub items: Vec<crate::indexer::MediaFile>,
+    pub items: Vec<MediaFile>,
     pub total: usize,
     pub page: usize,
     pub page_size: usize,
@@ -46,13 +47,8 @@ pub async fn media_search(
     let page_size = params
         .page_size
         .unwrap_or_else(|| NonZeroUsize::new(60).expect("nonzero"));
-    let query = SearchQuery::new(
-        tags,
-        attributes,
-        page,
-        page_size,
-    );
-    let snapshot = state.snapshot.read().await;
+    let query = SearchQuery::new(tags, attributes, page, page_size);
+    let snapshot = state.cache.read_snapshot().await;
     let result = SearchService::search(&snapshot, &query);
 
     Ok(Json(MediaSearchResponse::from(result)))
@@ -111,9 +107,9 @@ fn parse_attributes(rest: &HashMap<String, String>) -> HashMap<String, Vec<Strin
 mod tests {
     use super::*;
     use crate::{
-        cache::CacheSnapshot,
+        cache::{Cache, CacheSnapshot},
         config::{AppConfig, LogConfig, OtelConfig},
-        indexer::{MediaFile, MediaType},
+        media::{MediaFile, MediaType},
         tags::{Tag, TagKind},
     };
     use axum::{
@@ -124,7 +120,6 @@ mod tests {
     use http_body_util::BodyExt;
     use std::{net::SocketAddr, sync::Arc};
     use tempfile::tempdir;
-    use tokio::sync::RwLock;
     use tower::ServiceExt;
 
     fn app_state_with_media(media: Vec<MediaFile>) -> AppState {
@@ -146,9 +141,17 @@ mod tests {
             cors_allowed_origins: Vec::new(),
             frontend_dist_dir: None,
         });
-        let cache_store = Arc::new(crate::cache::CacheStore::new(tmp.path()));
+
         let snapshot = CacheSnapshot::new(media);
-        AppState::new(config, cache_store, Arc::new(RwLock::new(snapshot)))
+
+        AppState::new(
+            config.clone(),
+            Arc::new(Cache::new_with_snapshot(
+                config.media_root.clone(),
+                config.cache_dir.clone(),
+                snapshot,
+            )),
+        )
     }
 
     fn sample_media(id: &str, tags: Vec<Tag>) -> MediaFile {
