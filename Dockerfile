@@ -77,14 +77,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -s /bin/bash "$APP_USER" \
     && echo "$APP_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$APP_USER \
-    && chown -R $APP_USER:$APP_USER /usr/local/cargo /usr/local/rustup
-
-# Install Node (matching devcontainer requirements)
-ARG NODE_VERSION=24
-RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /galarie-content \
+    && chown -R $APP_USER:$APP_USER /usr/local/cargo /usr/local/rustup \
     && chown -R $APP_USER:$APP_USER /galarie-content
 
 USER $APP_USER

@@ -6,8 +6,16 @@
   "service": "devcontainer",
   "workspaceFolder": "/workspace",
   "remoteUser": "galarie",
+  "features": {
+    "ghcr.io/devcontainers-extra/features/mise:1": {
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/node:2": {
+      "version": "24"
+    }
+  },
   "forwardPorts": [8080, 5173, 4317, 3300, 9090, 3100, 3200],
-  "postCreateCommand": "cargo --version && rustc --version && node --version && npm --version",
+  "postCreateCommand": "mise --version && mise trust /workspace/.mise.toml && cargo --version && rustc --version && node --version && npm --version",
   "customizations": {
     "vscode": {
       "settings": {

@@ -80,6 +80,6 @@ services:
     environment:
       SWAGGER_JSON: /specs/openapi.yaml
     volumes:
-      - ../specs/galarie-media-platform/contracts/openapi.yaml:/specs/openapi.yaml:ro
+      - ../docs/openapi.yaml:/specs/openapi.yaml:ro
     ports:
       - "8088:8080"

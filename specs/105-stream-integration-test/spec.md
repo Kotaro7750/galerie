@@ -1,1 +1,0 @@
-../galarie-media-platform/spec.md

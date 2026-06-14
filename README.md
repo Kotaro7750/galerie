@@ -1,147 +1,143 @@
 # Galarie
 
-Galarie is a DB-free media browser that walks a mounted filesystem, parses filename tags, and serves a fast search/stream UI. A Rust (Axum) backend keeps the filesystem as the source of truth, caches metadata in JSON, and exposes `/api/v1` endpoints that power a React 18 + Vite SPA. The project ships with a devcontainer, an observability stack (OTel Collector, Prometheus, Loki, Tempo, Grafana), and Playwright E2E tests.
+Galarie は、ローカルにマウントしたメディアディレクトリをそのまま source of truth として扱う DB-free media browser です。Rust/Axum backend がファイル名タグを解析して JSON cache を作成し、React/Vite frontend が `/api/v1` 経由で検索・サムネイル・ストリーミング UI を提供します。
 
-## Features
+## 主な機能
 
-- **Filesystem-first catalog** – recursive scans turn filenames like `sunset+location-okinawa_rating-5.png` into structured tags and cached metadata.
-- **Search, thumbnails, streaming** – REST APIs for media queries, thumbnail generation, and loopable video playback.
-- **Favorites & tag filters** – SPA supports faceted filtering, favorites-driven slideshows, and invalid tag feedback.
-- **Observability baked in** – OpenTelemetry traces/logs/metrics wired to the bundled collector + Grafana stack.
-- **No external DBs** – deploy as a single container with media mounted read-only and cache stored in `/data/cache`.
+- ファイルシステムを直接走査し、外部 DB なしで catalog を構築。
+- `sunset+location-okinawa_rating-5.png` のようなファイル名から tag と key/value attribute を抽出。
+- tag/attribute の AND 検索、ページング、サムネイル表示。
+- 検索結果から original media を即座に stream 再生。
+- OpenTelemetry、Prometheus、Loki、Tempo、Grafana を含む local observability stack。
+- Playwright による frontend E2E test。
 
-## Repository Layout
+## リポジトリ構成
 
+```text
+backend/        Rust/Axum backend
+frontend/       React + Vite SPA
+docs/           現在有効な設計・API・開発方針
+sample-media/   テスト・デモ用 fixture
+media/          ローカルメディア用 mount point。Git 管理外
+.devcontainer/  devcontainer と observability stack
+Dockerfile      production/devcontainer 用 multi-stage build
+.mise.toml      backend/frontend 共通タスク
+AGENTS.md       AI エージェント向け作業規約
 ```
-backend/       # Rust backend (cargo workspace already configured)
-frontend/      # React 18 + Vite SPA (componentized search flow)
-sample-media/  # Versioned PNG/GIF/MP4 fixtures used for tests/demos
-media/         # Empty mountpoint for your own media (gitignored)
-.devcontainer/ # Devcontainer definition + observability docker-compose
-Dockerfile     # Multi-stage build for production & devcontainer images
-Makefile       # Convenience targets shared by backend/frontend
-specs/         # Product, architecture, and task documents
-```
 
-## Quickstart (Devcontainer)
+## ドキュメント
 
-1. Install the [Dev Container CLI](https://github.com/devcontainers/cli) (or use VS Code Dev Containers) and Docker.
-2. Clone the repo and prepare a media mount:
+- `docs/architecture.md` – システム境界、データフロー、タグ・キャッシュモデル。
+- `docs/api.md` – `/api/v1` endpoint の挙動と互換性ルール。
+- `docs/openapi.yaml` – Swagger UI でも利用する OpenAPI 定義。
+- `docs/backend.md` – backend の構成と実装規約。
+- `docs/frontend.md` – frontend の構成、状態責務、client 規約。
+- `docs/observability.md` – telemetry signal と local observability stack。
+- `docs/development.md` – 開発、テスト、contribution workflow。
 
-   ```bash
-   git clone <repo> galarie
-   cd galarie
-   mkdir -p media            # host directory bind-mounted read-only
-   devcontainer up --workspace-folder .
-   devcontainer exec --workspace-folder . bash
-   ```
+AI エージェント向けの作業ルールは `AGENTS.md` に分離しています。README には利用者・開発者の入口として必要な情報だけを置きます。
 
-3. Set runtime paths inside the container (adjust as needed):
+## Quickstart
 
-   ```bash
-   export GALARIE_MEDIA_ROOT=/workspace/media
-   export GALARIE_CACHE_DIR=/workspace/.cache
-   mkdir -p "$GALARIE_CACHE_DIR"
-   ```
-
-4. Seed sample assets (optional but useful):
-
-   ```bash
-   cp sample-media/* media/
-   ```
-
-Opening the devcontainer automatically launches the observability compose stack defined under `.devcontainer/observability/`. If you prefer to run it manually, execute `docker compose -f .devcontainer/observability/docker-compose.yaml up -d`.
-
-## Backend Notes
-
-- Routing is split into `routes/` modules: `state.rs` (shared app state), `cors.rs` (CORS layer), and `telemetry.rs` (Axum trace spans/logs) which are composed in `routes/mod.rs`.
-- The filesystem indexer still lives in `indexer.rs`; it emits `IndexEvent`s consumed by `main.rs` to persist cache snapshots.
-
-## Running the Backend
-
-Use the shared Make targets (they call `supervisord` within the devcontainer):
+ローカル開発では、環境差分を減らすため Dev Container を基本の実行環境とします。Dev Container CLI または VS Code Dev Containers と Docker を用意します。共通タスクは `mise` で実行し、devcontainer 内では初回作成時に `/workspace/.mise.toml` を trust します。
 
 ```bash
-make backend/dev        # start Axum server
-make backend/stop-dev   # stop it
-make backend/test       # cargo test
-make backend/lint       # cargo clippy -- -D warnings
-make backend/fmt        # cargo fmt --check
+git clone <repo> galarie
+cd galarie
+mkdir -p media
+devcontainer up --workspace-folder .
+devcontainer exec --workspace-folder . bash
 ```
 
-To run directly via Cargo:
+container 内で runtime path を設定します。
 
 ```bash
-cd backend
-cargo run -- \
-  --media-root "$GALARIE_MEDIA_ROOT" \
-  --cache-dir "$GALARIE_CACHE_DIR" \
-  --listen 0.0.0.0:8080
+export GALARIE_MEDIA_ROOT=/workspace/media
+export GALARIE_CACHE_DIR=/workspace/.cache
+mkdir -p "$GALARIE_CACHE_DIR"
 ```
 
-Key env vars:
-
-- `GALARIE_MEDIA_ROOT` – read-only mount for the filesystem crawl.
-- `GALARIE_CACHE_DIR` – writable directory for `index.json` cache.
-- `OTEL_EXPORTER_OTLP_ENDPOINT` – points to the collector (default `http://otel-collector:4317` inside docker-compose).
-- `GALARIE_ENV`, `RUST_LOG`, `OTEL_SERVICE_NAME` for telemetry tuning (see `Dockerfile`).
-
-## Frontend Notes
-
-- The search page is composed from reusable pieces under `frontend/src/components`: `FilterBar` (tag/key-value input), `SearchResults` (grid + pagination), `MediaCard`, and `MediaPreviewOverlay`.
-- Filter helpers live in `utils/filterUtils.ts`; filter types in `types/filters.ts`.
-
-## Running the Frontend
+必要に応じて sample media をコピーします。
 
 ```bash
-make frontend/install
-make frontend/dev        # starts Vite dev server under supervisor
-make frontend/stop-dev
-make frontend/test       # Vitest
-make frontend/e2e        # Playwright headless
-make frontend/e2e-ui     # Playwright inspector
+cp sample-media/* media/
 ```
 
-Manual operations:
+## 開発サーバー
+
+backend:
 
 ```bash
-cd frontend
-npm install
-npm run dev        # http://localhost:5173
-npm run build
-npm run preview
+mise run backend:dev
+mise run backend:stop-dev
 ```
 
-Set `VITE_API_BASE=http://localhost:8080/api/v1` in `frontend/.env` (dev) so the SPA talks to your backend.
+frontend:
 
-## Observability Stack
+```bash
+mise run frontend:install
+mise run frontend:dev
+mise run frontend:stop-dev
+```
 
-The compose file in `.devcontainer/observability/` provides:
+frontend が backend と通信する API root は `frontend/.env` で指定します。
 
-- OTel Collector (`localhost:4317`), Prometheus (`9090`), Loki (`3100`), Tempo (`3200`), Grafana (`3300`, admin/admin, anonymous enabled).
-- Datasources are auto-provisioned, and the backend already exports traces/logs/metrics. Visit Grafana to inspect them while interacting with the UI.
+```text
+VITE_API_BASE=http://localhost:8080/api/v1
+```
 
-## Sample Media & Ignored Content
+## API と Swagger UI
 
-`sample-media/README.md` documents three small fixtures generated with `ffmpeg`. Everything under `media/` is gitignored (except `.gitkeep` and the README), so you can safely mount personal libraries without risk of committing them.
+主要 endpoint:
 
-## Testing Checklist
+- `GET /api/v1/media`
+- `GET /api/v1/media/{id}/thumbnail`
+- `GET /api/v1/media/{id}/stream`
+- `POST /api/v1/index/rebuild`
 
-- `make backend/test`, `make backend/lint`, `make backend/fmt`
-- `make frontend/test` (Vitest)
-- `make frontend/e2e` (Playwright; run `make frontend/playwright-install` once per environment)
-- API smoke tests: `curl -X POST http://localhost:8080/api/v1/index/rebuild -d '{"force":true}' -H 'Content-Type: application/json'` followed by `curl "http://localhost:8080/api/v1/media?page=1&pageSize=60"`
+OpenAPI 定義は `docs/openapi.yaml` にあります。devcontainer の compose stack では Swagger UI を `http://localhost:8088` で起動します。
 
-## Docker Builds & Releases
+Smoke check:
 
-The top-level `Dockerfile` contains multi-stage builds:
+```bash
+curl -X POST http://localhost:8080/api/v1/index/rebuild \
+  -H 'Content-Type: application/json' \
+  -d '{"force":true}'
 
-- `backend-builder` (Rust)
-- `frontend-builder` (Node/Vite)
-- `prod-runtime` (slim Debian image that copies backend binary + frontend dist)
-- `devcontainer` (extends backend-builder for VS Code / CLI devcontainers)
+curl "http://localhost:8080/api/v1/media?page=1&pageSize=60"
+```
 
-Build the production image locally:
+## Observability
+
+devcontainer 起動時に `.devcontainer/observability/` の compose stack も利用できます。
+
+- OTel Collector: `localhost:4317`
+- Prometheus: `http://localhost:9090`
+- Loki: `http://localhost:3100`
+- Tempo: `http://localhost:3200`
+- Grafana: `http://localhost:3300`
+
+詳細は `docs/observability.md` を参照してください。
+
+## テスト
+
+```bash
+mise run backend:test
+mise run backend:lint
+mise run backend:fmt
+mise run frontend:test
+mise run frontend:lint
+mise run frontend:build
+mise run frontend:e2e
+```
+
+Playwright browser は環境ごとに一度 install します。
+
+```bash
+mise run frontend:playwright-install
+```
+
+## Docker build
 
 ```bash
 docker build \
@@ -149,8 +145,6 @@ docker build \
   -t your-dockerhub-username/galarie:latest \
   .
 ```
-
-Run it by mounting media/cache locations:
 
 ```bash
 docker run --rm \
@@ -160,20 +154,12 @@ docker run --rm \
   your-dockerhub-username/galarie:latest
 ```
 
-### GitHub Actions → Docker Hub
+GitHub Actions の Docker Hub publish workflow は `/.github/workflows/dockerhub-publish.yml` にあります。
 
-`/.github/workflows/dockerhub-publish.yml` builds the `prod-runtime` stage and pushes it whenever a Git tag is pushed to GitHub. Configure repository secrets:
+## Contribution
 
-- `DOCKERHUB_USERNAME`
-- `DOCKERHUB_TOKEN` (Docker Hub access token/password with push rights)
+1. 小さく焦点の合った branch を作る。
+2. 挙動、API semantics、architecture、workflow を変える場合は関連する `docs/*.md` を同時に更新する。
+3. 変更範囲に近い `mise` task を実行してから handoff する。
 
-Tagging `v0.1.0` results in `docker.io/<username>/galarie:v0.1.0`. The workflow does not publish `latest` automatically; add an extra metadata rule if desired.
-
-## Contributing
-
-1. Create a feature branch (`NNN-feature-name` to satisfy `.specify` scripts).
-2. Keep OpenTelemetry wiring intact when touching backend code.
-3. Run the Makefile lint/test targets for both backend and frontend.
-4. Submit PRs with relevant specs/tasks referenced under `specs/galarie-media-platform/`.
-
-For questions about architecture or roadmap, start with `specs/galarie-media-platform/plan.md` and `specs/galarie-media-platform/spec.md`.
+詳細な開発規約は `docs/development.md`、エージェント向け作業規約は `AGENTS.md` を参照してください。

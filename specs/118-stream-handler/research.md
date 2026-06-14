@@ -1,1 +1,0 @@
-../galarie-media-platform/research.md
