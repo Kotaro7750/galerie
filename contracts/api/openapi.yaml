@@ -1,0 +1,283 @@
+openapi: 3.2.0
+
+info:
+  title: Galerie API
+  version: 0.1.0
+  license:
+    name: MIT License
+    identifier: MIT
+  description: |
+    本APIは、Galerieアプリケーションが画像やPDF化した漫画等のマルチメディアを提供するためのAPIである。
+
+    なお、このAPI自体はコンテンツそのものの配信を行うことを想定しておらず、このAPIを利用してコンテンツのメタデータを取得し、その中に含まれる情報を使ってコンテンツを取得することを想定している。
+
+servers:
+  - url: /api/v0
+    description: API Version 0
+
+tags:
+  - name: Contents
+    description: コンテンツファイルに関するAPI
+
+security: []
+
+paths:
+  /contents:
+    get:
+      operationId: listContents
+      tags:
+        - Contents
+      summary: コンテンツ一覧の取得
+      description: |
+        コンテンツの一覧をカーソル方式で取得する。
+        最初のリクエストでは`cursor`を指定せず、続きがある場合はレスポンスの`nextCursor`を次のリクエストにそのまま指定する。
+
+        カーソルの値自体は無意味であり、クライアントはその内容を解釈してはいけない。
+        コンテンツは`id`の昇順で返される。
+
+        各ページはリクエスト時点のコンテンツを対象とするため、一連の呼び出し中にコンテンツが追加・削除された場合後続のリクエストはその更新の内容を反映する。
+        その結果、カーソル以前の位置に追加されたコンテンツやカーソル以降の位置で削除されたコンテンツは以降のリクエストには含まれない。
+        最新のコンテンツを取得するためには、`cursor`を指定せずに一覧取得を再開する必要がある。
+
+        `nextCursor`がない場合、そのページは最終ページであり、`items`の要素数は0以上である。
+        `nextCursor`がある場合、`items`には1件以上のコンテンツが含まれる。
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/PageLimit"
+      responses:
+        "200":
+          description: コンテンツ一覧の正常な取得
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentPage"
+              examples:
+                firstPage:
+                  summary: 途中のページ
+                  value:
+                    items:
+                      - id: 2f1c75fc-55de-4d4b-8992-76050f65dff0
+                        mediaType: image/avif
+                        contentUrl: https://content.example.com/2f1c75fc-55de-4d4b-8992-76050f65dff0.avif
+                        thumbnailUrl: https://content.example.com/2f1c75fc-55de-4d4b-8992-76050f65dff0.avif
+                    nextCursor: eyJhZnRlciI6IjJmMWM3NWZjIn0
+                lastPage:
+                  summary: 最終ページ
+                  value:
+                    items:
+                      - id: 7b0b8b8e-3c3d-4c12-9a4a-75e60d5c9e31
+                        mediaType: image/avif
+                        contentUrl: https://content.example.com/7b0b8b8e-3c3d-4c12-9a4a-75e60d5c9e31.avif
+                        thumbnailUrl: https://content.example.com/7b0b8b8e-3c3d-4c12-9a4a-75e60d5c9e31.avif
+                emptyPage:
+                  summary: コンテンツが存在しない場合
+                  value:
+                    items: []
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /contents/{contentId}:
+    get:
+      operationId: getContent
+      tags:
+        - Contents
+      summary: コンテンツの取得
+      description: |
+        個々のコンテンツに対してコンテンツの情報を取得する。
+
+      parameters:
+        - $ref: "#/components/parameters/ContentId"
+      responses:
+        "200":
+          description: コンテンツの正常な取得
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Content"
+              example:
+                id: 2f1c75fc-55de-4d4b-8992-76050f65dff0
+                mediaType: image/avif
+                contentUrl: https://content.example.com/2f1c75fc-55de-4d4b-8992-76050f65dff0.avif
+                thumbnailUrl: https://content.example.com/2f1c75fc-55de-4d4b-8992-76050f65dff0.avif
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/ContentNotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  parameters:
+    ContentId:
+      name: contentId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/ContentId"
+
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: |
+        一覧取得時のページネーションに用いるカーソル。
+
+      schema:
+        type: string
+        minLength: 1
+      example: eyJhZnRlciI6IjJmMWM3NWZjIn0
+
+    PageLimit:
+      name: limit
+      in: query
+      required: false
+      description: |
+        1ページに含めるコンテンツの最大件数。
+        継続リクエストでは直前のリクエストと異なる値を指定してもよい。
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 30
+      example: 30
+
+  schemas:
+    ContentId:
+      type: string
+      format: uuid
+      description: RFC 9562に準拠したUUID v4形式のコンテンツ識別子
+      pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+      example: 2f1c75fc-55de-4d4b-8992-76050f65dff0
+
+    Content:
+      type: object
+      description: コンテンツファイルの情報
+      additionalProperties: false
+      required:
+        - id
+        - mediaType
+        - contentUrl
+        - thumbnailUrl
+      properties:
+        id:
+          $ref: "#/components/schemas/ContentId"
+        mediaType:
+          type: string
+          description: コンテンツファイルのメディアタイプ
+          const: image/avif
+        contentUrl:
+          type: string
+          format: uri
+          pattern: "^https?://"
+          description: コンテンツ配信エンドポイントからコンテンツファイルを取得する絶対URL
+        thumbnailUrl:
+          type: string
+          format: uri
+          pattern: "^https?://"
+          description: サムネイル表示用のコンテンツファイルを取得する絶対URL
+
+    ContentPage:
+      type: object
+      description: カーソル方式でページングされたコンテンツ一覧
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          description: このページに含まれるコンテンツ
+          items:
+            $ref: "#/components/schemas/Content"
+        nextCursor:
+          type: string
+          minLength: 1
+          description: |
+            次ページを取得するためのカーソル。
+            最終ページではこのフィールドを返さない。
+      dependentSchemas:
+        nextCursor:
+          properties:
+            items:
+              minItems: 1
+            nextCursor: {}
+
+    Problem:
+      type: object
+      description: RFC 9457に準拠したAPIエラーの詳細
+      additionalProperties: true
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          description: エラー種別を識別するURI参照
+          default: about:blank
+        title:
+          type: string
+          description: エラー種別の短い説明
+        status:
+          type: integer
+          description: HTTPステータスコード
+        detail:
+          type: string
+          description: このエラーの具体的な説明
+        instance:
+          type: string
+          format: uri-reference
+          description: このエラー発生を識別するURI参照
+
+  responses:
+    BadRequest:
+      description: リクエストパラメーターが不正、またはカーソルが無効である
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Problem"
+              - type: object
+                properties:
+                  status:
+                    const: 400
+          example:
+            type: https://api.example.com/problems/invalid-request
+            title: Invalid request
+            status: 400
+            detail: The cursor is invalid or expired.
+
+    ContentNotFound:
+      description: 指定したリソースが存在しない
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Problem"
+              - type: object
+                properties:
+                  status:
+                    const: 404
+          example:
+            type: https://api.example.com/problems/content-not-found
+            title: Content not found
+            status: 404
+            detail: The requested content does not exist.
+
+    InternalServerError:
+      description: サーバー内部で予期しないエラーが発生した
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Problem"
+              - type: object
+                properties:
+                  status:
+                    const: 500
+          example:
+            type: https://api.example.com/problems/internal-server-error
+            title: Internal server error
+            status: 500
