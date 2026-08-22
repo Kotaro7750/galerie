@@ -13,15 +13,21 @@
 
 # 本リポジトリのドキュメントの構造
 本リポジトリにおける設計・コーディングスタイル等のドキュメントは、`docs`ディレクトリにマークダウンファイルとして格納する。
+
 ファイル名で単語を区切る場合は、アンダーバー（`_`）を使用する。
 他のファイルを参照する場合は相対パスによるMarkdownリンクを使用し、リンクテキストには拡張子を含むファイル名を記載する。
 
-* [overview.md](./overview.md): 本ドキュメント
-* [architecture.md](./architecture.md): システム全体の構成と各構成要素の責務を記述する
-* [artifacts.md](./artifacts.md): 本リポジトリで作成するアーティファクトと各ディレクトリの配置を記述する
-* [api.md](./api.md): フロントエンドSPAとバックエンドAPIサーバー間のAPI設計方針及び契約ドキュメントの配置を記述する
-* [content_files.md](./content_files.md): 正規コンテンツ及びXMPサイドカーのポータブルな形式を記述する
-* [content_storage.md](./content_storage.md): コンテンツの保存要件とバックエンドからアクセスするための境界を記述する
-* [tag_parse.md](./tag_parse.md): コンテンツストレージからタグを抽出し、検索用情報を更新する処理を記述する
-* [roadmap.md](./roadmap.md): 本プロジェクトにおける今後の開発計画を記述する
-* [versioning.md](./versioning.md): 本リポジトリ中の成果物のバージョニング規約を記述する
+サブディレクトリを作成する場合は、その直下に`overview.md`を配置する。
+本ドキュメントに各サブディレクトリについて記載する内容は、そのサブディレクトリが扱うドキュメントの役割と、そのサブディレクトリの`overview.md`へのリンクのみとする。
+サブディレクトリ配下の個別のドキュメントは本ドキュメントには記載せず、各サブディレクトリの`overview.md`から確認する。
+
+- [overview.md](./overview.md): 本ドキュメント
+- [architecture.md](./architecture.md): システム全体の構成と各構成要素の責務を記述する
+- [artifacts.md](./artifacts.md): 本リポジトリで作成するアーティファクトと各ディレクトリの配置を記述する
+- [api.md](./api.md): フロントエンドSPAとバックエンドAPIサーバー間のAPI設計方針及び契約ドキュメントの配置を記述する
+- [content_files.md](./content_files.md): 正規コンテンツ及びXMPサイドカーのポータブルな形式を記述する
+- [content_storage.md](./content_storage.md): コンテンツの保存要件とバックエンドからアクセスするための境界を記述する
+- [tag_parse.md](./tag_parse.md): コンテンツストレージからタグを抽出し、検索用情報を更新する処理を記述する
+- [roadmap.md](./roadmap.md): 本プロジェクトにおける今後の開発計画を記述する
+- [versioning.md](./versioning.md): 本リポジトリ中の成果物のバージョニング規約を記述する
+- [backend](./backend/): バックエンドAPIサーバーに関する設計ドキュメントを配置するドキュメント階層。配下のドキュメント構造は[overview.md](./backend/overview.md)に記載
