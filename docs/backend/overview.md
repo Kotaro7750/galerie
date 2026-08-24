@@ -9,4 +9,5 @@
 
 # 本ディレクトリのドキュメントの構造
 * [overview.md](./overview.md): 本ドキュメント
+* [framework.md](./framework.md): バックエンドAPIサーバーで使用する主要な技術スタックとバージョンの選定方針を記述する
 * [software-architecture.md](./software-architecture.md): バックエンドAPIサーバーのソフトウェアアーキテクチャの設計方針及びハイレベルなコンポーネント層の構成と責務を記述する

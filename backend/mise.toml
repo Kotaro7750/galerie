@@ -1,2 +1,16 @@
 [tools]
 rust = "1.98"
+
+[tasks.dev]
+dir = "."
+run = "cargo run"
+
+[tasks.dev.env]
+GALERIE_CONTENT_STORAGE__FILE_SYSTEM__CONTENT_ROOT_PATH = "../sample"
+# ../sample を別途 HTTP 配信するローカルサーバーの URL。
+GALERIE_CONTENT_STORAGE__FILE_SYSTEM__CONTENT_URL_BASE = "http://localhost:8000"
+# ローカル開発ではサムネイルにも同じサンプル画像を使用する。
+GALERIE_CONTENT_STORAGE__FILE_SYSTEM__THUMBNAIL_URL_BASE = "http://localhost:8000"
+
+[tasks."openapi:generate"]
+run = "openapi-generator-cli generate -i ../contracts/api/openapi.yaml -g rust-axum -o openapi_generated --type-mappings UUID=String --package-name galerie_api"

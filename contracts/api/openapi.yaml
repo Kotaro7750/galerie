@@ -231,18 +231,43 @@ components:
           format: uri-reference
           description: このエラー発生を識別するURI参照
 
+    BadRequestProblem:
+      description: 不正なリクエストを表すProblem Details
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - type: object
+          properties:
+            status:
+              type: integer
+              const: 400
+
+    ContentNotFoundProblem:
+      description: コンテンツが存在しないことを表すProblem Details
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - type: object
+          properties:
+            status:
+              type: integer
+              const: 404
+
+    InternalServerErrorProblem:
+      description: サーバー内部エラーを表すProblem Details
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - type: object
+          properties:
+            status:
+              type: integer
+              const: 500
+
   responses:
     BadRequest:
       description: リクエストパラメーターが不正、またはカーソルが無効である
       content:
         application/problem+json:
           schema:
-            allOf:
-              - $ref: "#/components/schemas/Problem"
-              - type: object
-                properties:
-                  status:
-                    const: 400
+            $ref: "#/components/schemas/BadRequestProblem"
           example:
             type: https://api.example.com/problems/invalid-request
             title: Invalid request
@@ -254,12 +279,7 @@ components:
       content:
         application/problem+json:
           schema:
-            allOf:
-              - $ref: "#/components/schemas/Problem"
-              - type: object
-                properties:
-                  status:
-                    const: 404
+            $ref: "#/components/schemas/ContentNotFoundProblem"
           example:
             type: https://api.example.com/problems/content-not-found
             title: Content not found
@@ -271,12 +291,7 @@ components:
       content:
         application/problem+json:
           schema:
-            allOf:
-              - $ref: "#/components/schemas/Problem"
-              - type: object
-                properties:
-                  status:
-                    const: 500
+            $ref: "#/components/schemas/InternalServerErrorProblem"
           example:
             type: https://api.example.com/problems/internal-server-error
             title: Internal server error
