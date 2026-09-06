@@ -31,3 +31,4 @@
 - [roadmap.md](./roadmap.md): 本プロジェクトにおける今後の開発計画を記述する
 - [versioning.md](./versioning.md): 本リポジトリ中の成果物のバージョニング規約を記述する
 - [backend](./backend/): バックエンドAPIサーバーに関する設計ドキュメントを配置するドキュメント階層。配下のドキュメント構造は[overview.md](./backend/overview.md)に記載
+- [frontend](./frontend/): フロントエンドSPAに関する設計ドキュメントを配置するドキュメント階層。配下のドキュメント構造は[overview.md](./frontend/overview.md)に記載
