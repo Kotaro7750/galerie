@@ -155,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "backend"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -545,7 +545,7 @@ dependencies = [
 
 [[package]]
 name = "galerie_api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ammonia",
  "async-trait",
