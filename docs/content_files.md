@@ -90,7 +90,7 @@ Unordered Array:
 
 ただし、
 * Textは有効なUTF-8文字列とし、デコード後のUnicodeコードポイント列はUAX #15で規定されるNFCで正規化されている必要がある
-* Integerは64bit符号付き整数の範囲である必要がある
+* IntegerはJavaScriptのnumberで安全に扱える整数範囲である-9007199254740991以上、9007199254740991以下（±(2^53 - 1)）である必要がある
 * RealはXMPのRealの字句形式に従い、IEEE 754 binary64の有限値として変換可能である必要がある
 * BooleanはKey-Value形式でないタグを表現するためのものとし、論理値trueのみを許可する
 * Unordered Arrayのすべての要素は同一のData Typeである必要があり、値の重複は許容しない

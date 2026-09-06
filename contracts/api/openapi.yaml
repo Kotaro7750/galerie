@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Galerie API
-  version: 0.2.0
+  version: 0.3.0
   license:
     name: MIT License
     identifier: MIT
@@ -35,7 +35,10 @@ paths:
         カーソルの値自体は無意味であり、クライアントはその内容を解釈してはいけない。
         コンテンツは`id`の昇順で返される。
 
-        各ページはリクエスト時点のコンテンツを対象とするため、一連の呼び出し中にコンテンツが追加・削除された場合後続のリクエストはその更新の内容を反映する。
+        対応するメタデータを読み取れないコンテンツは一覧対象から除外する。
+        `limit`・`nextCursor`及び最終ページの判定は除外後のコンテンツ一覧に対して作用する。
+
+        各ページはリクエスト時点のコンテンツを対象とするため、一連の呼び出し中にコンテンツが追加・削除された場合やメタデータの変更によって取得可能性が変わった場合後続のリクエストはその更新の内容を反映する。
         その結果、カーソル以前の位置に追加されたコンテンツやカーソル以降の位置で削除されたコンテンツは以降のリクエストには含まれない。
         最新のコンテンツを取得するためには、`cursor`を指定せずに一覧取得を再開する必要がある。
 
@@ -60,6 +63,34 @@ paths:
                         mediaType: image/avif
                         contentUrl: https://content.example.com/2f1c75fc-55de-4d4b-8992-76050f65dff0.avif
                         thumbnailUrl: https://content.example.com/2f1c75fc-55de-4d4b-8992-76050f65dff0.avif
+                        tags:
+                          - key: category
+                            type: text
+                            value: landscape
+                          - key: animation
+                            type: keyOnly
+                          - key: rating
+                            type: integer
+                            value: 5
+                          - key: score
+                            type: real
+                            value: 3.14
+                          - key: authors
+                            type: textSet
+                            values: [Alice, Bob]
+                          - key: pages
+                            type: integerSet
+                            values: [1, 3]
+                          - key: weights
+                            type: realSet
+                            values: [0.5, 1.5]
+                        invalidTags:
+                          - key: Invalid-Key
+                            reason: INVALID_KEY
+                          - key: OrderedArray
+                            reason: UNSUPPORTED_VALUE_TYPE
+                          - key: BooleanFalse
+                            reason: INVALID_VALUE
                     nextCursor: eyJhZnRlciI6IjJmMWM3NWZjIn0
                 lastPage:
                   summary: 最終ページ
@@ -69,6 +100,8 @@ paths:
                         mediaType: image/avif
                         contentUrl: https://content.example.com/7b0b8b8e-3c3d-4c12-9a4a-75e60d5c9e31.avif
                         thumbnailUrl: https://content.example.com/7b0b8b8e-3c3d-4c12-9a4a-75e60d5c9e31.avif
+                        tags: []
+                        invalidTags: []
                 emptyPage:
                   summary: コンテンツが存在しない場合
                   value:
@@ -86,6 +119,7 @@ paths:
       summary: コンテンツの取得
       description: |
         個々のコンテンツに対してコンテンツの情報を取得する。
+        コンテンツファイルの存在だけではなく対応するメタデータの取得を必須条件とする。
 
       parameters:
         - $ref: "#/components/parameters/ContentId"
@@ -101,6 +135,34 @@ paths:
                 mediaType: image/avif
                 contentUrl: https://content.example.com/2f1c75fc-55de-4d4b-8992-76050f65dff0.avif
                 thumbnailUrl: https://content.example.com/2f1c75fc-55de-4d4b-8992-76050f65dff0.avif
+                tags:
+                  - key: category
+                    type: text
+                    value: landscape
+                  - key: animation
+                    type: keyOnly
+                  - key: rating
+                    type: integer
+                    value: 5
+                  - key: score
+                    type: real
+                    value: 3.14
+                  - key: authors
+                    type: textSet
+                    values: [Alice, Bob]
+                  - key: pages
+                    type: integerSet
+                    values: [1, 3]
+                  - key: weights
+                    type: realSet
+                    values: [0.5, 1.5]
+                invalidTags:
+                  - key: Invalid-Key
+                    reason: INVALID_KEY
+                  - key: OrderedArray
+                    reason: UNSUPPORTED_VALUE_TYPE
+                  - key: BooleanFalse
+                    reason: INVALID_VALUE
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -160,6 +222,8 @@ components:
         - mediaType
         - contentUrl
         - thumbnailUrl
+        - tags
+        - invalidTags
       properties:
         id:
           $ref: "#/components/schemas/ContentId"
@@ -177,6 +241,182 @@ components:
           format: uri
           pattern: "^https?://"
           description: サムネイル表示用のコンテンツファイルを取得する絶対URL
+        tags:
+          type: array
+          description: 有効なタグ。該当するタグがなければ空配列を返す。
+          items:
+            $ref: "#/components/schemas/Tag"
+        invalidTags:
+          type: array
+          description: 無効なタグ。無効となった簡単な理由を含む。該当するタグがなければ空配列を返す
+          items:
+            $ref: "#/components/schemas/InvalidTag"
+
+    TagKey:
+      type: string
+      minLength: 1
+      maxLength: 64
+      description: |
+        有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。
+        先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。
+        長さはUnicodeコードポイント数で数える。
+      example: category
+
+    TextTagValue:
+      type: string
+      description: 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFCで正規化済みの値
+      example: landscape
+
+    IntegerTagValue:
+      type: integer
+      format: int64
+      minimum: -9007199254740991
+      maximum: 9007199254740991
+      description: |
+        JavaScriptのnumberで安全に扱える整数範囲（-(2^53 - 1)以上、2^53 - 1以下）に限定されたJSON数値
+      example: 5
+
+    RealTagValue:
+      type: number
+      format: double
+      description: XMPのRealの字句形式に従い、IEEE 754 binary64の有限値として変換可能な値をJSON数値で返す
+      example: 3.14
+
+    Tag:
+      description: コンテンツに付与されたタグ
+      oneOf:
+        - $ref: "#/components/schemas/KeyOnlyTag"
+        - $ref: "#/components/schemas/TextTag"
+        - $ref: "#/components/schemas/IntegerTag"
+        - $ref: "#/components/schemas/RealTag"
+        - $ref: "#/components/schemas/TextSetTag"
+        - $ref: "#/components/schemas/IntegerSetTag"
+        - $ref: "#/components/schemas/RealSetTag"
+
+    KeyOnlyTag:
+      type: object
+      description: キーのみのタグ
+      additionalProperties: false
+      required: [key, type]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        type:
+          type: string
+          const: keyOnly
+
+    TextTag:
+      type: object
+      description: 単一のText値を持つタグ
+      additionalProperties: false
+      required: [key, type, value]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        type:
+          type: string
+          const: text
+        value:
+          $ref: "#/components/schemas/TextTagValue"
+
+    IntegerTag:
+      type: object
+      description: 単一のInteger値を持つタグ
+      additionalProperties: false
+      required: [key, type, value]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        type:
+          type: string
+          const: integer
+        value:
+          $ref: "#/components/schemas/IntegerTagValue"
+
+    RealTag:
+      type: object
+      description: 単一のReal値を持つタグ
+      additionalProperties: false
+      required: [key, type, value]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        type:
+          type: string
+          const: real
+        value:
+          $ref: "#/components/schemas/RealTagValue"
+
+    TextSetTag:
+      type: object
+      description: Text値からなる集合のタグ。要素は順序を持たず、値の重複は許可しない。JSONでは配列として表現する
+      additionalProperties: false
+      required: [key, type, values]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        type:
+          type: string
+          const: textSet
+        values:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/TextTagValue"
+
+    IntegerSetTag:
+      type: object
+      description: Integer値からなる集合のタグ。要素は順序を持たず、値の重複は許可しない。JSONでは配列として表現する
+      additionalProperties: false
+      required: [key, type, values]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        type:
+          type: string
+          const: integerSet
+        values:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/IntegerTagValue"
+
+    RealSetTag:
+      type: object
+      description: Real値からなる集合のタグ。要素は順序を持たず、値の重複は許可しない。JSONでは配列として表現する
+      additionalProperties: false
+      required: [key, type, values]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        type:
+          type: string
+          const: realSet
+        values:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/RealTagValue"
+
+    InvalidTag:
+      type: object
+      description: |
+        無効なタグの情報
+      additionalProperties: false
+      required: [key, reason]
+      properties:
+        key:
+          type: string
+          description: 無効となる該当タグ名
+          example: Invalid-Key
+        reason:
+          type: string
+          enum: [INVALID_KEY, UNSUPPORTED_VALUE_TYPE, INVALID_VALUE]
+          description: |
+            - `INVALID_KEY`: タグ名が条件を満たしていない
+            - `UNSUPPORTED_VALUE_TYPE`: タグの型がサポートされていない
+            - `INVALID_VALUE`: 値が条件を満たしていない
+          example: INVALID_KEY
 
     ContentPage:
       type: object
@@ -242,7 +482,7 @@ components:
               const: 400
 
     ContentNotFoundProblem:
-      description: コンテンツが存在しないことを表すProblem Details
+      description: コンテンツが存在しない、または必須のXMPを読み込み・解析できないことを表すProblem Details
       allOf:
         - $ref: "#/components/schemas/Problem"
         - type: object
@@ -275,7 +515,7 @@ components:
             detail: The cursor is invalid or expired.
 
     ContentNotFound:
-      description: 指定したリソースが存在しない
+      description: コンテンツが存在しないもしくはメタデータを取得できない
       content:
         application/problem+json:
           schema:
@@ -284,7 +524,7 @@ components:
             type: https://api.example.com/problems/content-not-found
             title: Content not found
             status: 404
-            detail: The requested content does not exist.
+            detail: The requested content does not exist or its metadata cannot be retrieved.
 
     InternalServerError:
       description: サーバー内部で予期しないエラーが発生した
