@@ -1,0 +1,34 @@
+{
+  "name": "galerie-frontend",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test",
+    "api:generate": "openapi-generator-cli generate -i ../contracts/api/openapi.yaml -g typescript-fetch -o src/api/generated --additional-properties=hideGenerationTimestamp=true --global-property=apiDocs=false,modelDocs=false,apiTests=false,modelTests=false"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.0.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "react-router-dom": "^7.0.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.0.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "daisyui": "^5.0.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^7.0.0",
+    "vite": "^8.0.0"
+  },
+  "engines": { "node": ">=22.12.0" }
+}

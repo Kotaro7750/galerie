@@ -1,0 +1,17 @@
+[tools]
+node = "24"
+
+[tasks.install]
+run = "npm ci"
+
+[tasks.dev]
+run = "npm run dev"
+
+[tasks.build]
+run = "npm run build"
+
+[tasks.test]
+run = "npm test"
+
+[tasks."api:generate"]
+run = "npm run api:generate"
