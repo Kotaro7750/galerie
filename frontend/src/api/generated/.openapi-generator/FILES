@@ -5,7 +5,16 @@ models/BadRequestProblem.ts
 models/Content.ts
 models/ContentNotFoundProblem.ts
 models/ContentPage.ts
+models/IntegerSetTag.ts
+models/IntegerTag.ts
 models/InternalServerErrorProblem.ts
+models/InvalidTag.ts
+models/KeyOnlyTag.ts
 models/Problem.ts
+models/RealSetTag.ts
+models/RealTag.ts
+models/Tag.ts
+models/TextSetTag.ts
+models/TextTag.ts
 models/index.ts
 runtime.ts

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { apiRequest, contentsApi } from '../api/client';
 import { ContentImage } from '../components/ContentImage';
+import { ContentTags } from '../components/ContentTags';
 import { ErrorMessage, Loading } from '../components/Feedback';
 
 export function ContentPage() {
@@ -17,6 +18,7 @@ export function ContentPage() {
     {query.data && <>
       <div className="flex justify-center rounded-box bg-base-200 p-4"><ContentImage key={query.data.contentUrl} src={query.data.contentUrl} alt={`コンテンツ ${query.data.id}`} /></div>
       <div className="flex flex-wrap justify-between gap-2 text-sm"><span>{query.data.mediaType}</span><a className="link" href={query.data.contentUrl} target="_blank" rel="noreferrer">元の画像を開く ↗</a></div>
+      <section className="rounded-box border border-base-300 p-4" aria-label="タグ情報"><ContentTags tags={query.data.tags} invalidTags={query.data.invalidTags} /></section>
     </>}
   </section>;
 }

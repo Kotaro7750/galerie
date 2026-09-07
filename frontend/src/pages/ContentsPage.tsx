@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { apiRequest, contentsApi } from '../api/client';
 import { useGalleryStore } from '../store';
 import { ContentImage } from '../components/ContentImage';
+import { ContentTags } from '../components/ContentTags';
 import { ErrorMessage, Loading } from '../components/Feedback';
 
 export function ContentsPage() {
@@ -47,10 +48,15 @@ export function ContentsPage() {
     {items.length > 0 && <>
       <p className="text-sm">{items.length} 枚を表示</p>
       <div className={`grid gap-4 ${density === 'compact' ? 'grid-cols-3 md:grid-cols-5' : 'grid-cols-2 md:grid-cols-3'}`}>
-        {items.map((item, index) => <Link className="card min-w-0 bg-base-200" key={item.id} to={`/contents/${item.id}`} aria-label={`画像 ${index + 1} を開く`}>
+        {items.map((item, index) => <div className="content-card card min-w-0 bg-base-200" key={item.id}>
+          <Link to={`/contents/${item.id}`} aria-label={`画像 ${index + 1} を開く`}>
           <div className="aspect-square overflow-hidden"><ContentImage key={item.thumbnailUrl} src={item.thumbnailUrl} alt={`画像 ${index + 1} のサムネイル`} thumbnail /></div>
           <div className="card-body flex-row justify-between p-4"><span>{String(index + 1).padStart(2, '0')}</span><span aria-hidden="true">↗</span></div>
-        </Link>)}
+          </Link>
+          <div className="content-card-tags rounded-box border border-base-300 bg-base-100 p-4 shadow-lg" tabIndex={0} role="region" aria-label={`画像 ${index + 1} のタグ`}>
+            <ContentTags tags={item.tags} invalidTags={item.invalidTags} />
+          </div>
+        </div>)}
       </div>
     </>}
     <div ref={sentinel} className="h-px" />

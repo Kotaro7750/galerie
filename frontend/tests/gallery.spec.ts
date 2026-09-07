@@ -7,6 +7,8 @@ const content = (index: number) => ({
   mediaType: 'image/avif',
   contentUrl: 'http://media.test/original.avif',
   thumbnailUrl: 'http://media.test/thumbnail.avif',
+  tags: [],
+  invalidTags: [],
 });
 
 async function mockImages(page: Page) {
@@ -112,4 +114,78 @@ test('handles missing content and broken image delivery', async ({ page }) => {
   await expect.poll(() => page.getByRole('img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
   await page.goto('/#/missing');
   await expect(page.getByRole('heading', { name: 'ページが見つかりません' })).toBeVisible();
+});
+
+test('shows API tags on hover or focus and on the content page', async ({ page, isMobile }) => {
+  const taggedContent = {
+    ...content(0),
+    tags: [
+      { key: 'animation', type: 'keyOnly' },
+      { key: 'category', type: 'text', value: 'landscape' },
+      { key: 'rating', type: 'integer', value: 0 },
+      { key: 'score', type: 'real', value: -3.14 },
+      { key: 'authors', type: 'textSet', values: ['Alice', 'Bob'] },
+      { key: 'pages', type: 'integerSet', values: [1, 3] },
+      { key: 'weights', type: 'realSet', values: [0.5, 1.5] },
+      { key: 'empty', type: 'text', value: '' },
+      { key: 'emptySet', type: 'textSet', values: [] },
+      { key: 'long', type: 'text', value: '長いタグ'.repeat(100) },
+    ],
+    invalidTags: [
+      { key: 'Invalid-Key', reason: 'INVALID_KEY' },
+      { key: 'OrderedArray', reason: 'UNSUPPORTED_VALUE_TYPE' },
+      { key: 'BooleanFalse', reason: 'INVALID_VALUE' },
+    ],
+  };
+  await mockImages(page);
+  await page.route('**/api/v0/contents?*', (route) => route.fulfill({ json: { items: [taggedContent, content(1)] } }));
+  await page.route(`**/api/v0/contents/${id}`, (route) => route.fulfill({ json: taggedContent }));
+  await page.goto('/#/contents');
+  const card = page.getByRole('link', { name: '画像 1 を開く', exact: true });
+  const panel = page.getByRole('region', { name: '画像 1 のタグ', exact: true, includeHidden: true });
+  if (!isMobile) {
+    await expect(panel).toBeHidden();
+    await card.hover();
+    await expect(panel).toBeVisible();
+    await panel.hover();
+    await expect(panel).toBeVisible();
+    await page.getByRole('heading', { name: 'ギャラリー', exact: true }).hover();
+    await expect(panel).toBeHidden();
+    await card.focus();
+    await expect(panel).toBeVisible();
+    await page.keyboard.press('Tab');
+    await expect(panel).toBeFocused();
+  }
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole('list', { name: 'タグ', exact: true }).getByRole('listitem')).toHaveText([
+    'animation', 'category: landscape', 'rating: 0', 'score: -3.14',
+    'authors: Alice, Bob', 'pages: 1, 3', 'weights: 0.5, 1.5',
+    'empty: （空文字）', 'emptySet: （空集合）', `long: ${'長いタグ'.repeat(100)}`,
+  ]);
+  expect(await panel.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await panel.getByText('BooleanFalse: 値が無効です', { exact: true }).scrollIntoViewIfNeeded();
+  await expect(panel.getByText('BooleanFalse: 値が無効です', { exact: true })).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: `test-results/tags-gallery-${test.info().project.name}.png`, fullPage: true });
+  await card.click();
+  const detail = page.getByRole('region', { name: 'タグ情報' });
+  await expect(detail.getByRole('list', { name: 'タグ', exact: true }).getByRole('listitem')).toHaveCount(10);
+  await expect(detail.getByRole('list', { name: '無効なタグ', exact: true }).getByRole('listitem')).toHaveText([
+    'Invalid-Key: タグ名が無効です', 'OrderedArray: 未対応の型です', 'BooleanFalse: 値が無効です',
+  ]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: `test-results/tags-detail-${test.info().project.name}.png`, fullPage: true });
+});
+
+test('shows an empty tag state in both views', async ({ page }) => {
+  await mockImages(page);
+  await page.route('**/api/v0/contents?*', (route) => route.fulfill({ json: { items: [content(0)] } }));
+  await page.route(`**/api/v0/contents/${id}`, (route) => route.fulfill({ json: content(0) }));
+  await page.goto('/#/contents');
+  const card = page.getByRole('link', { name: '画像 1 を開く', exact: true });
+  await card.focus();
+  await expect(page.getByText('タグはありません', { exact: true })).toBeVisible();
+  await card.click();
+  await expect(page.getByText('タグはありません', { exact: true })).toBeVisible();
+  await expect(page.getByText('無効なタグ', { exact: true })).toHaveCount(0);
 });
