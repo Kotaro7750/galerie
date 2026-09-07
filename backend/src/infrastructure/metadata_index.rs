@@ -28,8 +28,8 @@ impl InMemoryMetadataIndex {
 impl MetadataIndex for InMemoryMetadataIndex {
     fn add_contents(&mut self, contents: &[Content]) -> Result<(), Error> {
         let mut new_contents = contents
-            .into_iter()
-            .map(|content| (content.id().clone(), content.clone()))
+            .iter()
+            .map(|content| (content.id(), content.clone()))
             .collect();
 
         self.sorted_contents.append(&mut new_contents);
@@ -75,7 +75,7 @@ impl MetadataIndex for InMemoryMetadataIndex {
             .collect::<Vec<Content>>();
 
         if contents.len() > limit as usize {
-            let next_cursor = self.id_to_cursor(contents[limit as usize].id().clone());
+            let next_cursor = self.id_to_cursor(contents[limit as usize].id());
             Ok((contents[..limit as usize].to_vec(), Some(next_cursor)))
         } else {
             Ok((contents, None))

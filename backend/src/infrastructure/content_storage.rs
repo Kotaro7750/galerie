@@ -30,12 +30,7 @@ impl FileSystemContentStorage {
         let contents_directory = PathBuf::from(content_directory_path.as_ref());
 
         if fs::metadata(&contents_directory)
-            .map_err(|e| {
-                Error::Internal(format!(
-                    "Failed to access contents directory: {}",
-                    e.to_string()
-                ))
-            })?
+            .map_err(|e| Error::Internal(format!("Failed to access contents directory: {}", e)))?
             .is_dir()
         {
             Ok(Self {
@@ -68,7 +63,7 @@ impl FileSystemContentStorage {
         Ok(fs::read_dir(&self.contents_directory)?
             .filter_map(|entry| entry.ok())
             .filter(|entry| entry.path().is_file())
-            .filter(|file| file.path().extension().map_or(false, |ext| ext == "xmp"))
+            .filter(|file| file.path().extension().is_some_and(|ext| ext == "xmp"))
             .filter_map(|xmp_entry| {
                 xmp_entry
                     .path()
@@ -89,9 +84,9 @@ impl FileSystemContentStorage {
         }
 
         // Check if the content file and xmp file both are files
-        if !fs::metadata(&content_file_path)?.file_type().is_file() {
-            Ok(false)
-        } else if !fs::metadata(&xmp_file_path)?.file_type().is_file() {
+        if !fs::metadata(&content_file_path)?.file_type().is_file()
+            || !fs::metadata(&xmp_file_path)?.file_type().is_file()
+        {
             Ok(false)
         } else {
             Ok(true)
@@ -131,47 +126,43 @@ impl ContentStorage for FileSystemContentStorage {
             .xmp_content_id_iter()
             .map_err(|e| Error::Internal(e.to_string()))?
         {
-            if let Some(cursor) = cursor {
-                if id.as_ref() <= cursor.as_ref() {
-                    continue;
-                }
-            }
-
-            if !self
-                .has_valid_content_pair(id)
-                .ok()
-                .map_or(false, |valid| valid)
+            if let Some(cursor) = cursor
+                && id.as_ref() <= cursor.as_ref()
             {
                 continue;
             }
 
-            if let Some(media_type) = self.extract_media_type(id) {
-                if let Some(Some(metadata)) = self.extract_xmp_metadata(id).ok() {
-                    let tag_parse_result = parse_xmp(metadata);
+            if !self.has_valid_content_pair(id).ok().unwrap_or(false) {
+                continue;
+            }
 
-                    let content = Content::new(
-                        id,
-                        media_type,
-                        format!("{}/{}.avif", self.content_url_base, id.as_ref())
-                            .parse()
-                            .unwrap(),
-                        format!("{}/{}.avif", self.thumbnail_url_base, id.as_ref())
-                            .parse()
-                            .unwrap(),
-                        tag_parse_result.parsed().to_vec(),
-                        tag_parse_result.skipped().to_vec(),
-                    );
+            if let Some(media_type) = self.extract_media_type(id)
+                && let Ok(Some(metadata)) = self.extract_xmp_metadata(id)
+            {
+                let tag_parse_result = parse_xmp(metadata);
 
-                    if heap.len() as u64 >= limit.get() && content >= *heap.peek().unwrap() {
-                        continue;
-                    }
+                let content = Content::new(
+                    id,
+                    media_type,
+                    format!("{}/{}.avif", self.content_url_base, id.as_ref())
+                        .parse()
+                        .unwrap(),
+                    format!("{}/{}.avif", self.thumbnail_url_base, id.as_ref())
+                        .parse()
+                        .unwrap(),
+                    tag_parse_result.parsed().to_vec(),
+                    tag_parse_result.skipped().to_vec(),
+                );
 
-                    if limit.get() <= heap.len() as u64 {
-                        heap.pop();
-                    }
-
-                    heap.push(content);
+                if heap.len() as u64 >= limit.get() && content >= *heap.peek().unwrap() {
+                    continue;
                 }
+
+                if limit.get() <= heap.len() as u64 {
+                    heap.pop();
+                }
+
+                heap.push(content);
             }
         }
 
@@ -191,7 +182,7 @@ where
     T: AsRef<str>,
 {
     match extension.as_ref() {
-        "avif" => Some(MediaType::AVIF),
+        "avif" => Some(MediaType::Avif),
         _ => None,
     }
 }

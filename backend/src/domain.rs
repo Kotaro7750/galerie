@@ -53,13 +53,13 @@ impl AsRef<Uuid> for ContentId {
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) enum MediaType {
-    AVIF,
+    Avif,
 }
 
 impl From<MediaType> for Mime {
     fn from(media_type: MediaType) -> Self {
         match media_type {
-            MediaType::AVIF => "image/avif".parse().unwrap(),
+            MediaType::Avif => "image/avif".parse().unwrap(),
         }
     }
 }
@@ -98,7 +98,7 @@ impl Content {
     }
 
     pub(crate) fn media_type(&self) -> MediaType {
-        *(&self.media_type)
+        self.media_type
     }
 
     pub(crate) fn content_url(&self) -> &Url {
@@ -128,7 +128,7 @@ impl Eq for Content {}
 
 impl PartialOrd for Content {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.id.cmp(&other.id))
+        Some(self.cmp(other))
     }
 }
 

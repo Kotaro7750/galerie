@@ -61,18 +61,18 @@ impl ContentController {
         let query_params = query?;
 
         let limit = query_params.limit.unwrap_or(30);
-        if limit <= 0 || 100 < limit {
+        if limit == 0 || 100 < limit {
             return Err(ContentControlllerError::BadRequest(
                 "limit must be between 1 and 100".to_string(),
             ));
         }
 
-        if let Some(cursor) = &query_params.cursor {
-            if cursor.is_empty() {
-                return Err(ContentControlllerError::BadRequest(
-                    "cursor must not be empty".to_string(),
-                ));
-            }
+        if let Some(cursor) = &query_params.cursor
+            && cursor.is_empty()
+        {
+            return Err(ContentControlllerError::BadRequest(
+                "cursor must not be empty".to_string(),
+            ));
         }
 
         let (items, cursor) = this

@@ -61,7 +61,7 @@ impl TagKey {
         }
 
         let char_count = key.chars().count();
-        if char_count < 1 || 64 < char_count {
+        if !(1..=64).contains(&char_count) {
             return false;
         }
 
@@ -106,7 +106,7 @@ pub(crate) struct IntegerTagValue(i64);
 impl IntegerTagValue {
     #[allow(dead_code)]
     fn new(value: i64) -> Option<Self> {
-        if -(2_i64.pow(53) - 1) <= value && value <= 2_i64.pow(53) - 1 {
+        if -(2_i64.pow(53) - 1) <= value && value < 2_i64.pow(53) {
             Some(Self(value))
         } else {
             None
