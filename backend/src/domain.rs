@@ -5,6 +5,8 @@ use url::Url;
 use uuid::Uuid;
 use uuid::fmt::Hyphenated;
 
+pub(crate) mod tag;
+
 #[derive(Debug)]
 pub(crate) enum Error {
     ContentNotFound,
@@ -12,15 +14,9 @@ pub(crate) enum Error {
     Internal(String),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 /// ContentId is a valid UUID v4 that represents the unique identifier of a content.
 pub(crate) struct ContentId(Uuid);
-
-impl ContentId {
-    pub(crate) fn new() -> Self {
-        Self(Uuid::new_v4())
-    }
-}
 
 impl FromStr for ContentId {
     type Err = String;
@@ -74,6 +70,8 @@ pub(crate) struct Content {
     media_type: MediaType,
     content_url: Url,
     thumbnail_url: Url,
+    tags: Vec<tag::Tag>,
+    skipped_tags: Vec<tag::SkippedTag>,
 }
 
 impl Content {
@@ -82,12 +80,16 @@ impl Content {
         media_type: MediaType,
         content_url: Url,
         thumbnail_url: Url,
+        tags: Vec<tag::Tag>,
+        skipped_tags: Vec<tag::SkippedTag>,
     ) -> Self {
         Self {
             id,
             media_type,
             content_url,
             thumbnail_url,
+            tags,
+            skipped_tags,
         }
     }
 
@@ -105,5 +107,13 @@ impl Content {
 
     pub(crate) fn thumbnail_url(&self) -> &Url {
         &self.thumbnail_url
+    }
+
+    pub(crate) fn tags(&self) -> &[tag::Tag] {
+        &self.tags
+    }
+
+    pub(crate) fn skipped_tags(&self) -> &[tag::SkippedTag] {
+        &self.skipped_tags
     }
 }

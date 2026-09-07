@@ -1,6 +1,6 @@
 [package]
 name = "backend"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 
 [dependencies]
@@ -15,5 +15,8 @@ http = "1.5.0"
 mime = "0.3.17"
 serde = "1.0.229"
 tokio = { version = "1.53.1", features = ["full"] }
+unicode-normalization = "0.1.25"
+unicode-xid = "0.2.6"
 url = "2.5.8"
 uuid = { version = "1.24.1", features = ["v4"] }
+xmp_toolkit = "1.12.1"

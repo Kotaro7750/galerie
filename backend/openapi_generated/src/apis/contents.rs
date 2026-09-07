@@ -20,7 +20,7 @@ pub enum GetContentResponse {
     Status400
     (models::BadRequestProblem)
     ,
-    /// 指定したリソースが存在しない
+    /// コンテンツが存在しないもしくはメタデータを取得できない
     Status404
     (models::ContentNotFoundProblem)
     ,

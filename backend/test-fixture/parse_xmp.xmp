@@ -1,0 +1,47 @@
+<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+    <rdf:Description rdf:about="" xmlns:galerie="galerie" xmlns:other="https://example.com/ns/other/">
+      <galerie:BooleanTrue>True</galerie:BooleanTrue>
+      <galerie:BooleanFalse>False</galerie:BooleanFalse>
+      <galerie:Integer>-100</galerie:Integer>
+      <galerie:Real>3.14</galerie:Real>
+      <galerie:Text>これはテストです</galerie:Text>
+      <galerie:Invalid-Key>これは無効なタグキーです</galerie:Invalid-Key>
+      <galerie:Array>
+        <rdf:Bag>
+          <rdf:li>あ</rdf:li>
+          <rdf:li>い</rdf:li>
+          <rdf:li>う</rdf:li>
+        </rdf:Bag>
+      </galerie:Array>
+      <galerie:OrderedArray>
+        <rdf:Seq>
+          <rdf:li>あ</rdf:li>
+          <rdf:li>い</rdf:li>
+          <rdf:li>う</rdf:li>
+        </rdf:Seq>
+      </galerie:OrderedArray>
+      <galerie:IntegerArray>
+        <rdf:Bag>
+          <rdf:li>-100</rdf:li>
+          <rdf:li>0</rdf:li>
+          <rdf:li>100</rdf:li>
+        </rdf:Bag>
+      </galerie:IntegerArray>
+      <galerie:RealArray>
+        <rdf:Bag>
+          <rdf:li>-2.5</rdf:li>
+          <rdf:li>0.0</rdf:li>
+          <rdf:li>3.14</rdf:li>
+        </rdf:Bag>
+      </galerie:RealArray>
+      <galerie:struct rdf:parseType="Resource">
+        <galerie:Name>テスト構造体</galerie:Name>
+        <galerie:Count>2</galerie:Count>
+      </galerie:struct>
+      <other:OtherNamespace>これは名前空間外です</other:OtherNamespace>
+    </rdf:Description>
+  </rdf:RDF>
+</x:xmpmeta>
+<?xpacket end="w"?>

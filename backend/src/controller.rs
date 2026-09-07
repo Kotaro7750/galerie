@@ -8,9 +8,12 @@ use mime::Mime;
 
 use galerie_api::models::{
     BadRequestProblem, Content, ContentNotFoundProblem, ContentPage, GetContentPathParams,
-    InternalServerErrorProblem, ListContentsQueryParams,
+    IntegerSetTag, IntegerTag, IntegerTagValue, InternalServerErrorProblem, InvalidTag, KeyOnlyTag,
+    ListContentsQueryParams, RealSetTag, RealTag, RealTagValue, Tag, TextSetTag, TextTag,
+    TextTagValue,
 };
 
+use crate::domain::tag::{SkippedTag, Tag as DomainTag};
 use crate::usecase::{GetContentUseCase, ListContentsUseCase};
 use crate::{domain, usecase};
 
@@ -93,6 +96,81 @@ impl From<domain::Content> for Content {
             media_type: Into::<Mime>::into(content.media_type()).to_string(),
             content_url: content.content_url().to_string(),
             thumbnail_url: content.thumbnail_url().to_string(),
+            tags: content
+                .tags()
+                .iter()
+                .map(|tag| tag.clone().into())
+                .collect(),
+            invalid_tags: content
+                .skipped_tags()
+                .iter()
+                .map(|tag| tag.clone().into())
+                .collect(),
+        }
+    }
+}
+
+impl From<DomainTag> for Tag {
+    fn from(tag: DomainTag) -> Self {
+        match tag {
+            DomainTag::KeyOnly { key } => Self::KeyOnlyTag(KeyOnlyTag {
+                key: key.as_ref().to_string(),
+                r_type: "keyOnly".to_string(),
+            }),
+            DomainTag::Text { key, value } => Self::TextTag(TextTag {
+                key: key.as_ref().to_string(),
+                value: value.as_ref().to_string(),
+                r_type: "text".to_string(),
+            }),
+            DomainTag::Integer { key, value } => Self::IntegerTag(IntegerTag {
+                key: key.as_ref().to_string(),
+                value: *value.as_ref(),
+                r_type: "integer".to_string(),
+            }),
+            DomainTag::Real { key, value } => Self::RealTag(RealTag {
+                key: key.as_ref().to_string(),
+                value: *value.as_ref(),
+                r_type: "real".to_string(),
+            }),
+            DomainTag::TextSet { key, values } => Self::TextSetTag(TextSetTag {
+                key: key.as_ref().to_string(),
+                values: values
+                    .into_iter()
+                    .map(|v| TextTagValue(v.as_ref().to_string()))
+                    .collect(),
+                r_type: "textSet".to_string(),
+            }),
+            DomainTag::IntegerSet { key, values } => Self::IntegerSetTag(IntegerSetTag {
+                key: key.as_ref().to_string(),
+                values: values
+                    .into_iter()
+                    .map(|v| IntegerTagValue(*v.as_ref()))
+                    .collect(),
+                r_type: "integerSet".to_string(),
+            }),
+            DomainTag::RealSet { key, values } => Self::RealSetTag(RealSetTag {
+                key: key.as_ref().to_string(),
+                values: values
+                    .into_iter()
+                    .map(|v| RealTagValue(*v.as_ref()))
+                    .collect(),
+                r_type: "realSet".to_string(),
+            }),
+        }
+    }
+}
+
+impl From<SkippedTag> for InvalidTag {
+    fn from(tag: SkippedTag) -> Self {
+        InvalidTag {
+            key: tag.key().to_string(),
+            reason: match tag.reason() {
+                crate::domain::tag::SkippedReason::InvalidKey => "INVALID_KEY".to_string(),
+                crate::domain::tag::SkippedReason::InvalidValue => "INVALID_VALUE".to_string(),
+                crate::domain::tag::SkippedReason::UnsupportedValueType => {
+                    "UNSUPPORTED_VALUE_TYPE".to_string()
+                }
+            },
         }
     }
 }

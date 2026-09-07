@@ -1,7 +1,11 @@
 use std::fs::{self};
-use std::path::{Path, PathBuf};
+use std::io;
+use std::path::PathBuf;
 use std::str::FromStr;
 
+use xmp_toolkit::{OpenFileOptions, XmpError, XmpFile, XmpMeta};
+
+use crate::domain::tag::parse_xmp;
 use crate::domain::{Content, ContentId, Error, MediaType};
 use crate::port::ContentStorage;
 
@@ -46,7 +50,9 @@ impl FileSystemContentStorage {
     }
 
     fn xmp_file_path(&self, id: ContentId) -> PathBuf {
-        todo!();
+        self.contents_directory
+            .clone()
+            .join(format!("{}.xmp", id.as_ref()))
     }
 
     fn content_file_path(&self, id: ContentId) -> PathBuf {
@@ -55,17 +61,87 @@ impl FileSystemContentStorage {
             .join(format!("{}.avif", id.as_ref()))
     }
 
-    fn generate_content(&self, content_file_path: &Path) -> Option<Content> {
-        if !fs::metadata(content_file_path).ok()?.file_type().is_file() {
-            return None;
+    /// コンテンツディレクトリ配下から拡張子を除いたファイル名の重複を除いたユニークな一覧をイテレータとして返す
+    fn list_unique_content_ids(&self) -> Result<impl Iterator<Item = ContentId>, io::Error> {
+        Ok(fs::read_dir(&self.contents_directory)?
+            .filter_map(|entry| entry.ok())
+            .filter_map(|entry| {
+                let path = entry.path();
+                if path.is_file() {
+                    path.file_stem()
+                        .and_then(|stem| stem.to_str())
+                        .and_then(|stem_str| ContentId::from_str(stem_str).ok())
+                } else {
+                    None
+                }
+            })
+            .collect::<std::collections::HashSet<ContentId>>()
+            .into_iter())
+    }
+
+    /// Check if both content file and xmp file exist and are files for the given content id
+    fn has_valid_content_pair(&self, id: ContentId) -> Result<bool, io::Error> {
+        let content_file_path = self.content_file_path(id);
+        let xmp_file_path = self.xmp_file_path(id);
+
+        // Check if the content file and xmp file both exist
+        if !fs::exists(&content_file_path)? || !fs::exists(&xmp_file_path)? {
+            return Ok(false);
         }
 
-        let media_type =
-            media_type_from_extension(content_file_path.extension()?.to_string_lossy().as_ref())?;
-        let id =
-            ContentId::from_str(content_file_path.file_stem()?.to_string_lossy().as_ref()).ok()?;
+        // Check if the content file and xmp file both are files
+        if !fs::metadata(&content_file_path)?.file_type().is_file() {
+            Ok(false)
+        } else if !fs::metadata(&xmp_file_path)?.file_type().is_file() {
+            Ok(false)
+        } else {
+            Ok(true)
+        }
+    }
 
-        Some(Content::new(
+    /// Extract XMP metadata for the given content id
+    fn extract_xmp_metadata(&self, id: ContentId) -> Result<Option<XmpMeta>, XmpError> {
+        let xmp_file_path = self.xmp_file_path(id);
+
+        let mut xmp_file = XmpFile::new()?;
+        xmp_file.open_file(
+            &xmp_file_path,
+            OpenFileOptions::default().for_read().only_xmp(),
+        )?;
+
+        Ok(xmp_file.xmp())
+    }
+
+    /// Extract mediatype for the given content id
+    fn extract_media_type(&self, id: ContentId) -> Option<MediaType> {
+        let content_file_path = self.content_file_path(id);
+
+        media_type_from_extension(content_file_path.extension()?.to_string_lossy().as_ref())
+    }
+}
+
+impl ContentStorage for FileSystemContentStorage {
+    fn get_content(&self, id: ContentId) -> Result<Content, Error> {
+        if !self.has_valid_content_pair(id).map_err(|e| {
+            Error::Internal(format!(
+                "Failed to check existence of content pair: {}",
+                e.to_string()
+            ))
+        })? {
+            return Err(Error::ContentNotFound);
+        }
+
+        let metadata = self
+            .extract_xmp_metadata(id)
+            .map_err(|e| {
+                Error::Internal(format!("Failed to extract XMP metadata: {}", e.to_string()))
+            })?
+            .ok_or(Error::ContentNotFound)?;
+        let tag_parse_result = parse_xmp(metadata);
+
+        let media_type = self.extract_media_type(id).ok_or(Error::ContentNotFound)?;
+
+        Ok(Content::new(
             id,
             media_type,
             format!("{}/{}.avif", self.content_url_base, id.as_ref())
@@ -74,26 +150,9 @@ impl FileSystemContentStorage {
             format!("{}/{}.avif", self.thumbnail_url_base, id.as_ref())
                 .parse()
                 .unwrap(),
+            tag_parse_result.parsed().to_vec(),
+            tag_parse_result.skipped().to_vec(),
         ))
-    }
-}
-
-impl ContentStorage for FileSystemContentStorage {
-    fn get_content(&self, id: ContentId) -> Result<Content, Error> {
-        let content_file_path = self.content_file_path(id);
-
-        let exist = fs::exists(&content_file_path).map_err(|e| {
-            Error::Internal(format!(
-                "Failed to check existence of content file: {}",
-                e.to_string()
-            ))
-        })?;
-        if !exist {
-            return Err(Error::ContentNotFound);
-        }
-
-        self.generate_content(&content_file_path)
-            .ok_or(Error::ContentNotFound)
     }
 
     fn list_contents(
@@ -101,16 +160,16 @@ impl ContentStorage for FileSystemContentStorage {
         limit: u64,
         cursor: Option<String>,
     ) -> Result<(Vec<Content>, Option<String>), Error> {
-        let mut contents: Vec<Content> = fs::read_dir(&self.contents_directory)
+        let mut contents = self
+            .list_unique_content_ids()
             .map_err(|e| {
                 Error::Internal(format!(
-                    "Failed to read contents directory: {}",
+                    "Failed to list unique content ids: {}",
                     e.to_string()
                 ))
             })?
-            .filter_map(|entry| entry.ok())
-            .filter_map(|entry| self.generate_content(&entry.path()))
-            .collect();
+            .filter_map(|id| self.get_content(id).ok())
+            .collect::<Vec<Content>>();
 
         contents.sort_by_key(|content| content.id().as_ref().clone());
 

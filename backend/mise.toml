@@ -13,4 +13,5 @@ GALERIE_CONTENT_STORAGE__FILE_SYSTEM__CONTENT_URL_BASE = "http://localhost:8000"
 GALERIE_CONTENT_STORAGE__FILE_SYSTEM__THUMBNAIL_URL_BASE = "http://localhost:8000"
 
 [tasks."openapi:generate"]
-run = "openapi-generator-cli generate -i ../contracts/api/openapi.yaml -g rust-axum -o openapi_generated --type-mappings UUID=String --package-name galerie_api"
+# OpenAPI Generator 7.24.0のrust-axumでは、名前付き整数スキーマの再マッピング時にi64の型情報が失われるため明示的に指定する
+run = "openapi-generator-cli generate -i ../contracts/api/openapi.yaml -g rust-axum -o openapi_generated --type-mappings UUID=String,i64=i64 --package-name galerie_api"
