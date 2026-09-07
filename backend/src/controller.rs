@@ -5,7 +5,6 @@ use axum::response::IntoResponse;
 use http::StatusCode;
 use http::header::CONTENT_TYPE;
 use mime::Mime;
-use uuid::Uuid;
 
 use galerie_api::models::{
     BadRequestProblem, Content, ContentNotFoundProblem, ContentPage, GetContentPathParams,
@@ -43,16 +42,9 @@ impl ContentController {
         State(this): State<Self>,
         path: Result<Path<GetContentPathParams>, PathRejection>,
     ) -> Result<Json<Content>, ContentControlllerError> {
-        let id = Uuid::parse_str(&path?.content_id)
-            // Check if passed id is a valid UUID
-            .map_err(|e| {
-                ContentControlllerError::BadRequest(format!(
-                    "cannot parse contentId as valid UUID, err: {}",
-                    e
-                ))
-            })?
-            // Check if passed id is castable to ContentId
-            .try_into()
+        let id = path?
+            .content_id
+            .parse::<domain::ContentId>()
             .map_err(|e| {
                 ContentControlllerError::BadRequest(format!("invalid contentId, err: {}", e))
             })?;

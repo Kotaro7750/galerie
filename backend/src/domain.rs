@@ -3,6 +3,7 @@ use std::str::FromStr;
 use mime::Mime;
 use url::Url;
 use uuid::Uuid;
+use uuid::fmt::Hyphenated;
 
 #[derive(Debug)]
 pub(crate) enum Error {
@@ -25,7 +26,10 @@ impl FromStr for ContentId {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let uuid = Uuid::parse_str(s).map_err(|e| format!("Invalid UUID string: {}", e))?;
+        let uuid = s
+            .parse::<Hyphenated>()
+            .map_err(|e| format!("Invalid UUID string: {}", e))?
+            .into_uuid();
         uuid.try_into()
     }
 }
