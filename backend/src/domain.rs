@@ -14,7 +14,7 @@ pub(crate) enum Error {
     Internal(String),
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 /// ContentId is a valid UUID v4 that represents the unique identifier of a content.
 pub(crate) struct ContentId(Uuid);
 
@@ -115,5 +115,25 @@ impl Content {
 
     pub(crate) fn skipped_tags(&self) -> &[tag::SkippedTag] {
         &self.skipped_tags
+    }
+}
+
+impl PartialEq for Content {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Content {}
+
+impl PartialOrd for Content {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.id.cmp(&other.id))
+    }
+}
+
+impl Ord for Content {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.id.cmp(&other.id)
     }
 }

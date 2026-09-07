@@ -1,3 +1,4 @@
+use std::num::NonZeroU64;
 use std::sync::Arc;
 
 use axum::Router;
@@ -6,7 +7,9 @@ use controller::ContentController;
 use serde::Deserialize;
 use usecase::GetContentUseCase;
 
-use crate::infrastructure::FileSystemContentStorage;
+use crate::infrastructure::content_storage::FileSystemContentStorage;
+use crate::infrastructure::metadata_index::InMemoryMetadataIndex;
+use crate::port::{ContentStorage, MetadataIndex};
 use crate::usecase::ListContentsUseCase;
 
 mod controller;
@@ -36,9 +39,25 @@ async fn main() {
         )
         .unwrap(),
     );
+    let mut metadata_index = InMemoryMetadataIndex::new();
+
+    let mut cursor = None;
+    loop {
+        let (contents, next_cursor) = content_storage
+            .scan_contents(NonZeroU64::new(100).unwrap(), cursor)
+            .unwrap();
+        metadata_index.add_contents(&contents).unwrap();
+        cursor = next_cursor;
+
+        if cursor.is_none() {
+            break;
+        }
+    }
+    let metadata_index = Arc::new(metadata_index);
+
     let contents_controller = ContentController::new(
-        ListContentsUseCase::new(content_storage.clone()),
-        GetContentUseCase::new(content_storage.clone()),
+        ListContentsUseCase::new(metadata_index.clone()),
+        GetContentUseCase::new(metadata_index.clone()),
     );
     let api_v0_router = Router::new().nest("/contents", contents_controller.router());
     let app = Router::new().nest("/api/v0", api_v0_router);

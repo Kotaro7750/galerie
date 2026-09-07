@@ -45,12 +45,9 @@ impl ContentController {
         State(this): State<Self>,
         path: Result<Path<GetContentPathParams>, PathRejection>,
     ) -> Result<Json<Content>, ContentControlllerError> {
-        let id = path?
-            .content_id
-            .parse::<domain::ContentId>()
-            .map_err(|e| {
-                ContentControlllerError::BadRequest(format!("invalid contentId, err: {}", e))
-            })?;
+        let id = path?.content_id.parse::<domain::ContentId>().map_err(|e| {
+            ContentControlllerError::BadRequest(format!("invalid contentId, err: {}", e))
+        })?;
 
         let content = this.get_content.execute(id)?;
 
