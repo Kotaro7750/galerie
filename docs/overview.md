@@ -27,6 +27,7 @@
 - [api.md](./api.md): フロントエンドSPAとバックエンドAPIサーバー間のAPI設計方針及び契約ドキュメントの配置を記述する
 - [content_files.md](./content_files.md): 正規コンテンツ及びXMPサイドカーのポータブルな形式を記述する
 - [content_storage.md](./content_storage.md): コンテンツの保存要件とバックエンドからアクセスするための境界を記述する
+- [content_search.md](./content_search.md): コンテンツの検索機能において利用可能な検索条件を記述する
 - [tag_parse.md](./tag_parse.md): コンテンツストレージからタグを抽出し、検索用情報を更新する処理を記述する
 - [roadmap.md](./roadmap.md): 本プロジェクトにおける今後の開発計画を記述する
 - [versioning.md](./versioning.md): 本リポジトリ中の成果物のバージョニング規約を記述する
