@@ -6,6 +6,15 @@
   xmlns:galerie='galerie'>
   <galerie:animation>True</galerie:animation>
   <galerie:category>abstract</galerie:category>
+  <galerie:subjects>
+   <rdf:Bag>
+    <rdf:li>抽象</rdf:li>
+    <rdf:li>アニメーション</rdf:li>
+    <rdf:li>幾何学</rdf:li>
+   </rdf:Bag>
+  </galerie:subjects>
+  <galerie:Invalid-Key>無効なタグ名</galerie:Invalid-Key>
+  <galerie:disabled>False</galerie:disabled>
  </rdf:Description>
 </rdf:RDF>
 </x:xmpmeta>

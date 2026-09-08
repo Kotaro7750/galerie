@@ -6,6 +6,15 @@
   xmlns:galerie='galerie'>
   <galerie:category>origami</galerie:category>
   <galerie:transparent>True</galerie:transparent>
+  <galerie:subjects>
+   <rdf:Bag>
+    <rdf:li>折り紙</rdf:li>
+    <rdf:li>紙</rdf:li>
+    <rdf:li>透過</rdf:li>
+   </rdf:Bag>
+  </galerie:subjects>
+  <galerie:Invalid-Key>無効なタグ名</galerie:Invalid-Key>
+  <galerie:disabled>False</galerie:disabled>
  </rdf:Description>
 </rdf:RDF>
 </x:xmpmeta>

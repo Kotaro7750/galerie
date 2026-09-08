@@ -5,6 +5,15 @@
  <rdf:Description rdf:about=''
   xmlns:galerie='galerie'>
   <galerie:category>landscape</galerie:category>
+  <galerie:subjects>
+   <rdf:Bag>
+    <rdf:li>自然</rdf:li>
+    <rdf:li>風景</rdf:li>
+    <rdf:li>山</rdf:li>
+   </rdf:Bag>
+  </galerie:subjects>
+  <galerie:Invalid-Key>無効なタグ名</galerie:Invalid-Key>
+  <galerie:disabled>False</galerie:disabled>
  </rdf:Description>
 </rdf:RDF>
 </x:xmpmeta>

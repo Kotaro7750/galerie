@@ -20,3 +20,7 @@ SPAフレームワークとしては[React](https://ja.react.dev/)を利用す�
 ## UIライブラリ
 [daisyUI](https://daisyui.com/)を利用する。
 バージョンは最新のv5系列を使用する。
+
+## アイコンセット
+[Lucide](https://lucide.dev/)を使用する。
+公式で[Reactパッケージ](https://lucide.dev/guide/react/)が用意されているため実際にはそれを利用する。

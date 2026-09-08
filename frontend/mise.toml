@@ -1,5 +1,6 @@
 [tools]
 node = "24"
+"npm:typescript" = "7"
 
 [tasks.install]
 run = "npm ci"

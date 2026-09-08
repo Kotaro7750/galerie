@@ -1,7 +1,7 @@
 {
   "name": "galerie-frontend",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.0.0",
+    "lucide-react": "^1.42.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "react-router-dom": "^7.0.0",

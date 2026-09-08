@@ -1,27 +1,4 @@
 @import "tailwindcss";
-@plugin "daisyui";
-
-.content-card-tags {
-  max-height: 16rem;
-  overflow-y: auto;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .content-card-tags {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    width: 100%;
-    visibility: hidden;
-  }
-
-  .content-card:hover,
-  .content-card:focus-within {
-    z-index: 10;
-  }
-
-  .content-card:hover .content-card-tags,
-  .content-card:focus-within .content-card-tags {
-    visibility: visible;
-  }
+@plugin "daisyui" {
+  themes: light --default, dark;
 }
