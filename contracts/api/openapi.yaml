@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Galerie API
-  version: 0.3.0
+  version: 0.4.0
   license:
     name: MIT License
     identifier: MIT
@@ -31,22 +31,48 @@ paths:
       description: |
         コンテンツの一覧をカーソル方式で取得する。
         最初のリクエストでは`cursor`を指定せず、続きがある場合はレスポンスの`nextCursor`を次のリクエストにそのまま指定する。
+        また、`condition`を用いることで検索条件を指定した一覧取得が可能である。
 
         カーソルの値自体は無意味であり、クライアントはその内容を解釈してはいけない。
         コンテンツは`id`の昇順で返される。
 
         対応するメタデータを読み取れないコンテンツは一覧対象から除外する。
-        `limit`・`nextCursor`及び最終ページの判定は除外後のコンテンツ一覧に対して作用する。
+        `limit`・`nextCursor`及び最終ページの判定は、読み取り不能なコンテンツの除外と検索条件による絞り込み後の一覧に対して作用する。
 
-        各ページはリクエスト時点のコンテンツを対象とするため、一連の呼び出し中にコンテンツが追加・削除された場合やメタデータの変更によって取得可能性が変わった場合後続のリクエストはその更新の内容を反映する。
+        各ページはリクエスト時点のコンテンツを対象とするため、一連の呼び出し中にコンテンツが追加・削除された場合やメタデータの変更によって取得可能性や検索条件への一致が変わった場合、後続のリクエストはその更新の内容を反映する。
         その結果、カーソル以前の位置に追加されたコンテンツやカーソル以降の位置で削除されたコンテンツは以降のリクエストには含まれない。
         最新のコンテンツを取得するためには、`cursor`を指定せずに一覧取得を再開する必要がある。
 
         `nextCursor`がない場合、そのページは最終ページであり、`items`の要素数は0以上である。
         `nextCursor`がある場合、`items`には1件以上のコンテンツが含まれる。
+
+        検索条件は複数の項のAND条件として扱われ、正しくURLエンコードされたJSON配列として指定された場合のみ有効となり、無効な場合エラーとなる。
+        この基準を満たす場合であれば、JSON文字列の空白・プロパティ順や配列の順番は問わず同一の検索条件として扱割れる。
+
+        検索を行う際、ページをまたぐ後続のリクエストは初回リクエスト時と同一の検索条件を指定する必要がある。
+        初回とは異なる検索条件を指定した場合、正しい結果は保証されない。
+
+        `condition`の省略と空配列は同一の検索条件として扱い、その場合には全件を対象とする。
+
+        ##### 検索リクエストの例
+        ```sh
+        curl --get 'http://localhost:8000/api/v0/contents' \
+          --data-urlencode 'condition=[{"kind":"tagMatch","key":"category","values":["landscape","portrait"]},{"kind":"tagMatch","key":"authors","values":["Alice"]}]' \
+          --data-urlencode 'limit=30'
+        ```
+
+        上記の例では、`category`が`landscape`または`portrait`で、`authors`に`Alice`を含むコンテンツを検索する。
+
+      x-codeSamples:
+        - lang: curl
+          source: |
+            curl --get 'http://localhost:8000/api/v0/contents' \
+              --data-urlencode 'condition=[{"kind":"tagMatch","key":"category","values":["landscape","portrait"]},{"kind":"tagMatch","key":"authors","values":["Alice"]}]' \
+              --data-urlencode 'limit=30'
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/PageLimit"
+        - $ref: "#/components/parameters/SearchCondition"
       responses:
         "200":
           description: コンテンツ一覧の正常な取得
@@ -103,7 +129,7 @@ paths:
                         tags: []
                         invalidTags: []
                 emptyPage:
-                  summary: コンテンツが存在しない場合
+                  summary: コンテンツが存在しないもしくは検索結果が0件
                   value:
                     items: []
         "400":
@@ -191,6 +217,18 @@ components:
         minLength: 1
       example: eyJhZnRlciI6IjJmMWM3NWZjIn0
 
+    SearchCondition:
+      name: condition
+      in: query
+      required: false
+      description: |
+        検索条件の項のJSON配列をURLエンコードした値。
+        省略または空配列は全件を表す。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SearchCondition"
+
     PageLimit:
       name: limit
       in: query
@@ -206,12 +244,75 @@ components:
       example: 30
 
   schemas:
+    SearchCondition:
+      type: array
+      items:
+        $ref: "#/components/schemas/SearchTerm"
+
+    SearchTerm:
+      oneOf:
+        - $ref: "#/components/schemas/MediaTypeMatchTerm"
+        - $ref: "#/components/schemas/TagExistsTerm"
+        - $ref: "#/components/schemas/TagMatchTerm"
+
+    MediaTypeMatchTerm:
+      type: object
+      description: コンテンツファイルフォーマットが指定値のうちいずれかに一致する場合にマッチする
+      additionalProperties: false
+      required: [kind, values]
+      properties:
+        kind:
+          type: string
+          const: mediaTypeMatch
+        values:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/MediaType"
+
+    TagExistsTerm:
+      type: object
+      description: 指定した名前の有効なタグが型を問わず存在する場合に一致する。キーのみのタグも対象とするがinvalidTagsは対象外。
+      additionalProperties: false
+      required: [kind, key]
+      properties:
+        kind:
+          type: string
+          const: tagExists
+        key:
+          $ref: "#/components/schemas/TagKey"
+
+    TagMatchTerm:
+      type: object
+      description: |
+        指定したキーを持つタグの値が、指定値のいずれかと一致する場合に一致する。
+        タグが集合型の場合には、いずれかの要素が指定値のいずれかと一致すれば一致する。
+        有効な文字列型・文字列集合型のタグが存在しない場合は不一致とする。
+      additionalProperties: false
+      required: [kind, key, values]
+      properties:
+        kind:
+          type: string
+          const: tagMatch
+        key:
+          $ref: "#/components/schemas/TagKey"
+        values:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/TextTagValue"
+
     ContentId:
       type: string
       format: uuid
       description: RFC 9562に準拠したUUID v4形式のコンテンツ識別子
       pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
       example: 2f1c75fc-55de-4d4b-8992-76050f65dff0
+
+    MediaType:
+      type: string
+      description: コンテンツファイルのメディアタイプ
+      enum: [image/avif]
 
     Content:
       type: object
@@ -228,9 +329,7 @@ components:
         id:
           $ref: "#/components/schemas/ContentId"
         mediaType:
-          type: string
-          description: コンテンツファイルのメディアタイプ
-          const: image/avif
+          $ref: "#/components/schemas/MediaType"
         contentUrl:
           type: string
           format: uri
