@@ -5,9 +5,7 @@ use std::num::NonZeroU64;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use xmp_toolkit::{OpenFileOptions, XmpError, XmpFile, XmpMeta};
-
-use crate::domain::tag::parse_xmp;
+use crate::domain::tag::parse_metadata;
 use crate::domain::{Content, ContentId, Error, MediaType};
 use crate::port::ContentStorage;
 
@@ -93,17 +91,12 @@ impl FileSystemContentStorage {
         }
     }
 
-    /// Extract XMP metadata for the given content id
-    fn extract_xmp_metadata(&self, id: ContentId) -> Result<Option<XmpMeta>, XmpError> {
+    /// Extract XMP content as a string for the given content id
+    fn extract_xmp_content(&self, id: ContentId) -> Result<String, io::Error> {
         let xmp_file_path = self.xmp_file_path(id);
+        let xmp_content = fs::read_to_string(&xmp_file_path)?;
 
-        let mut xmp_file = XmpFile::new()?;
-        xmp_file.open_file(
-            &xmp_file_path,
-            OpenFileOptions::default().for_read().only_xmp(),
-        )?;
-
-        Ok(xmp_file.xmp())
+        Ok(xmp_content.to_string())
     }
 
     /// Extract mediatype for the given content id
@@ -137,9 +130,11 @@ impl ContentStorage for FileSystemContentStorage {
             }
 
             if let Some(media_type) = self.extract_media_type(id)
-                && let Ok(Some(metadata)) = self.extract_xmp_metadata(id)
+                && let Ok(metadata) = self.extract_xmp_content(id)
             {
-                let tag_parse_result = parse_xmp(metadata);
+                let tag_parse_result = parse_metadata(&metadata).map_err(|e| {
+                    Error::Internal(format!("Failed to parse metadata for content {}", e))
+                })?;
 
                 let content = Content::new(
                     id,

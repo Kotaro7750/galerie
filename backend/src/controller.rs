@@ -161,9 +161,14 @@ impl From<SkippedTag> for InvalidTag {
     fn from(tag: SkippedTag) -> Self {
         InvalidTag {
             key: tag.key().to_string(),
+            // TODO Set dedicated error code for each reason
             reason: match tag.reason() {
-                crate::domain::tag::SkippedReason::InvalidKey => "INVALID_KEY".to_string(),
-                crate::domain::tag::SkippedReason::InvalidValue => "INVALID_VALUE".to_string(),
+                crate::domain::tag::SkippedReason::InvalidKey
+                | crate::domain::tag::SkippedReason::DuplicateKey => "INVALID_KEY".to_string(),
+                crate::domain::tag::SkippedReason::InvalidValue
+                | crate::domain::tag::SkippedReason::DuplicateSetValue => {
+                    "INVALID_VALUE".to_string()
+                }
                 crate::domain::tag::SkippedReason::UnsupportedValueType => {
                     "UNSUPPORTED_VALUE_TYPE".to_string()
                 }

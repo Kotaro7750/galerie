@@ -1,5 +1,13 @@
+use std::collections::{BTreeSet, HashSet};
+
+use quick_xml::{
+    events::Event,
+    name::{Namespace, ResolveResult},
+    reader::NsReader,
+};
+use thiserror::Error;
 use unicode_xid::UnicodeXID;
-use xmp_toolkit::{IterOptions, XmpMeta, XmpProperty};
+use xmp_toolkit::{IterOptions, XmpMeta, XmpProperty, XmpValue};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Tag {
@@ -20,24 +28,37 @@ pub(crate) enum Tag {
         key: TagKey,
         value: RealTagValue,
     },
-    // TODO: VecではなくHashSetにした方がよい
     TextSet {
         key: TagKey,
-        values: Vec<TextTagValue>,
+        values: HashSet<TextTagValue>,
     },
     #[allow(dead_code)]
     IntegerSet {
         key: TagKey,
-        values: Vec<IntegerTagValue>,
+        values: HashSet<IntegerTagValue>,
     },
     #[allow(dead_code)]
     RealSet {
         key: TagKey,
-        values: Vec<RealTagValue>,
+        values: BTreeSet<RealTagValue>, // Due to floating point comparison issues, we use BTreeSet instead of HashSet for RealTagValue
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl Tag {
+    pub(crate) fn key(&self) -> &TagKey {
+        match self {
+            Tag::KeyOnly { key }
+            | Tag::Text { key, .. }
+            | Tag::Integer { key, .. }
+            | Tag::Real { key, .. }
+            | Tag::TextSet { key, .. }
+            | Tag::IntegerSet { key, .. }
+            | Tag::RealSet { key, .. } => key,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct TagKey {
     key: String,
 }
@@ -81,7 +102,7 @@ impl AsRef<str> for TagKey {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct TextTagValue(String);
 
 impl TextTagValue {
@@ -100,7 +121,7 @@ impl AsRef<str> for TextTagValue {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct IntegerTagValue(i64);
 
 impl IntegerTagValue {
@@ -130,12 +151,12 @@ impl AsRef<f64> for RealTagValue {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ParseResult {
+pub(crate) struct Metadata {
     parsed: Vec<Tag>,
     skipped: Vec<SkippedTag>,
 }
 
-impl ParseResult {
+impl Metadata {
     pub(crate) fn parsed(&self) -> &[Tag] {
         &self.parsed
     }
@@ -164,27 +185,123 @@ impl SkippedTag {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum SkippedReason {
     InvalidKey,
+    DuplicateKey,
     UnsupportedValueType,
     InvalidValue,
+    DuplicateSetValue,
 }
 
-/// Parse and validate XMP metadata into Tags
-pub(crate) fn parse_xmp(metadata: XmpMeta) -> ParseResult {
+#[derive(Debug, Error)]
+pub(crate) enum ParseMetadataError {
+    #[error("Failed to parse XMP XML: {0}")]
+    InvalidXml(#[from] quick_xml::Error),
+    #[error("Failed to parse XMP metadata: {0}")]
+    InvalidXmp(#[from] xmp_toolkit::XmpError),
+}
+
+/// Validate tag uniqueness before XMP Toolkit discards duplicate properties.
+pub(crate) fn parse_metadata(metadata_xmp: &str) -> Result<Metadata, ParseMetadataError> {
+    const RDF_NS: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+    const TAG_NS: &str = "galerie";
+
+    #[derive(PartialEq)]
+    enum ElementContext {
+        Rdf,
+        Description,
+        Other,
+    }
+
+    let mut reader = NsReader::from_str(metadata_xmp);
+    reader.config_mut().expand_empty_elements = true;
+    // Keep only the ancestry needed to distinguish properties from array/structure members.
+    let mut ancestors = Vec::new();
+    let mut keys = HashSet::new();
+    let mut duplicate_keys = HashSet::new();
+    let mut register = |key: &str| {
+        if !keys.insert(key.to_owned()) {
+            duplicate_keys.insert(key.to_owned());
+        }
+    };
+    loop {
+        match reader
+            .read_event()
+            .map_err(ParseMetadataError::InvalidXml)?
+        {
+            Event::Start(element) => {
+                let (namespace, local) = reader.resolver().resolve_element(element.name());
+                let is_rdf =
+                    namespace == ResolveResult::Bound(Namespace(RDF_NS)) && local.as_ref() == "RDF";
+                let is_description = namespace == ResolveResult::Bound(Namespace(RDF_NS))
+                    && local.as_ref() == "Description"
+                    && ancestors.last() == Some(&ElementContext::Rdf);
+
+                if ancestors.last() == Some(&ElementContext::Description)
+                    && namespace == ResolveResult::Bound(Namespace(TAG_NS))
+                {
+                    register(local.as_ref());
+                }
+                if is_description {
+                    for attribute in element.attributes() {
+                        let attribute = attribute.map_err(quick_xml::Error::from)?;
+                        let (namespace, local) = reader.resolver().resolve_attribute(attribute.key);
+                        if namespace == ResolveResult::Bound(Namespace(TAG_NS)) {
+                            register(local.as_ref());
+                        }
+                    }
+                }
+                ancestors.push(if is_rdf {
+                    ElementContext::Rdf
+                } else if is_description {
+                    ElementContext::Description
+                } else {
+                    ElementContext::Other
+                });
+            }
+            Event::End(_) => {
+                ancestors.pop();
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+
+    let metadata = metadata_xmp.parse::<XmpMeta>()?;
+    Ok(parse_xmp(metadata, &duplicate_keys))
+}
+
+/// Parse and validate already decoded XMP metadata.
+/// Passed `duplicate_keys` are skipped.
+fn parse_xmp(metadata: XmpMeta, duplicate_keys: &HashSet<String>) -> Metadata {
     let mut parsed = Vec::new();
-    let mut skipped = Vec::new();
+    let mut skipped = duplicate_keys
+        .iter()
+        .map(|key| SkippedTag {
+            key: key.clone(),
+            reason: SkippedReason::DuplicateKey,
+        })
+        .collect::<Vec<_>>();
 
     for property in metadata.iter(
         IterOptions::default()
             .schema_ns("galerie")
             .immediate_children_only(),
     ) {
+        let local_key = property.name.split_once(':').map_or("", |(_, key)| key);
+
+        if duplicate_keys.contains(local_key) {
+            continue;
+        }
+
         match parse_xmp_property(&metadata, property) {
             Ok(tag) => parsed.push(tag),
             Err(skipped_tag) => skipped.push(skipped_tag),
         }
     }
 
-    ParseResult { parsed, skipped }
+    parsed.sort_by(|left, right| left.key().cmp(right.key()));
+    skipped.sort_by(|left, right| left.key.cmp(&right.key));
+
+    Metadata { parsed, skipped }
 }
 
 /// Parse a single XMP property into a Tag, or return a SkippedTag if it cannot be parsed as a valid Tag.
@@ -215,14 +332,16 @@ fn parse_xmp_property(metadata: &XmpMeta, property: XmpProperty) -> Result<Tag, 
     if property.value.is_array() && !property.value.is_ordered() {
         Ok(Tag::TextSet {
             key: tag_key,
-            values: metadata
-                .property_array(&property.schema_ns, &property.name)
-                .map(|item| TextTagValue::new(&item.value))
-                .collect::<Option<Vec<_>>>()
-                .ok_or(SkippedTag {
-                    key: local_key,
-                    reason: SkippedReason::InvalidValue,
-                })?,
+            values: parse_set_tag_value(
+                metadata
+                    .property_array(&property.schema_ns, &property.name)
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+            )
+            .map_err(|err| SkippedTag {
+                key: local_key,
+                reason: err,
+            })?,
         })
     } else if property.value.is_struct() || property.value.is_ordered() {
         Err(SkippedTag {
@@ -251,12 +370,28 @@ fn parse_xmp_property(metadata: &XmpMeta, property: XmpProperty) -> Result<Tag, 
     }
 }
 
+fn parse_set_tag_value(
+    values: &[XmpValue<String>],
+) -> Result<HashSet<TextTagValue>, SkippedReason> {
+    let mut values_set = HashSet::new();
+
+    for value in values.iter().map(|v| v.value.as_str()) {
+        if let Some(value) = TextTagValue::new(value) {
+            if !values_set.insert(value) {
+                return Err(SkippedReason::DuplicateSetValue);
+            }
+        } else {
+            return Err(SkippedReason::InvalidValue);
+        }
+    }
+
+    Ok(values_set)
+}
+
 #[cfg(test)]
 mod tests {
-    use unicode_normalization::UnicodeNormalization;
-    use xmp_toolkit::{OpenFileOptions, XmpFile};
-
     use super::*;
+    use unicode_normalization::UnicodeNormalization;
 
     #[test]
     fn test_tag_key_validation_empty_key() {
@@ -321,37 +456,31 @@ mod tests {
     }
 
     #[test]
+    fn test_duplicate_tags_are_skipped() {
+        let file_path = "test-fixture/duplicate_tags.xmp";
+        let xml = std::fs::read_to_string(file_path).expect("Failed to read XMP file");
+        let parse_result = parse_metadata(&xml);
+
+        assert!(
+            parse_result.is_ok(),
+            "Failed to parse XMP XML: {:?}",
+            parse_result.err()
+        );
+        assert!(parse_result.unwrap().skipped().contains(&SkippedTag {
+            key: "DuplicatedTag".to_string(),
+            reason: SkippedReason::DuplicateKey,
+        }));
+    }
+
+    #[test]
     fn test_parse_xmp() {
-        let mut xmp_file = XmpFile::new().expect("Failed to create XmpFile");
-        xmp_file
-            .open_file(
-                "test-fixture/parse_xmp.xmp",
-                OpenFileOptions::default().for_read(),
-            )
-            .expect("Failed to open XMP file");
-
-        let metadata = xmp_file.xmp().expect("Failed to get XMP metadata");
-
-        let parse_result = parse_xmp(metadata);
+        let file_path = "test-fixture/parse_xmp.xmp";
+        let xml = std::fs::read_to_string(file_path).expect("Failed to read XMP file");
+        let parse_result = parse_metadata(&xml).expect("Failed to parse XMP XML");
 
         assert_eq!(
             parse_result.parsed,
             vec![
-                Tag::KeyOnly {
-                    key: TagKey::new("BooleanTrue").unwrap()
-                },
-                Tag::Text {
-                    key: TagKey::new("Integer").unwrap(),
-                    value: TextTagValue::new("-100").unwrap()
-                },
-                Tag::Text {
-                    key: TagKey::new("Real").unwrap(),
-                    value: TextTagValue::new("3.14").unwrap()
-                },
-                Tag::Text {
-                    key: TagKey::new("Text").unwrap(),
-                    value: TextTagValue::new("これはテストです").unwrap()
-                },
                 Tag::TextSet {
                     key: TagKey::new("Array").unwrap(),
                     values: vec![
@@ -359,6 +488,15 @@ mod tests {
                         TextTagValue("い".to_string()),
                         TextTagValue("う".to_string())
                     ]
+                    .into_iter()
+                    .collect()
+                },
+                Tag::KeyOnly {
+                    key: TagKey::new("BooleanTrue").unwrap()
+                },
+                Tag::Text {
+                    key: TagKey::new("Integer").unwrap(),
+                    value: TextTagValue::new("-100").unwrap()
                 },
                 Tag::TextSet {
                     key: TagKey::new("IntegerArray").unwrap(),
@@ -367,6 +505,12 @@ mod tests {
                         TextTagValue("0".to_string()),
                         TextTagValue("100".to_string())
                     ]
+                    .into_iter()
+                    .collect()
+                },
+                Tag::Text {
+                    key: TagKey::new("Real").unwrap(),
+                    value: TextTagValue::new("3.14").unwrap()
                 },
                 Tag::TextSet {
                     key: TagKey::new("RealArray").unwrap(),
@@ -375,6 +519,12 @@ mod tests {
                         TextTagValue("0.0".to_string()),
                         TextTagValue("3.14".to_string())
                     ]
+                    .into_iter()
+                    .collect()
+                },
+                Tag::Text {
+                    key: TagKey::new("Text").unwrap(),
+                    value: TextTagValue::new("これはテストです").unwrap()
                 },
             ]
         );
@@ -384,6 +534,10 @@ mod tests {
                 SkippedTag {
                     key: "BooleanFalse".to_string(),
                     reason: SkippedReason::InvalidValue
+                },
+                SkippedTag {
+                    key: "DuplicatedSet".to_string(),
+                    reason: SkippedReason::DuplicateSetValue
                 },
                 SkippedTag {
                     key: "Invalid-Key".to_string(),

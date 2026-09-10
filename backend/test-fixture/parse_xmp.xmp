@@ -15,6 +15,12 @@
           <rdf:li>う</rdf:li>
         </rdf:Bag>
       </galerie:Array>
+      <galerie:DuplicatedSet>
+        <rdf:Bag>
+          <rdf:li>重複する値</rdf:li>
+          <rdf:li>重複する値</rdf:li>
+        </rdf:Bag>
+      </galerie:DuplicatedSet>
       <galerie:OrderedArray>
         <rdf:Seq>
           <rdf:li>あ</rdf:li>
