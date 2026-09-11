@@ -1,17 +1,19 @@
 import { useEffect, useRef } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest, contentsApi } from '../api/client';
-import { useGalleryStore } from '../store';
+import { useGalleryStore, useSearchStore } from '../store';
 
 export function useContents() {
+  const condition = useSearchStore((state) => state.condition);
+  const queryKey = ['contents', condition];
   const client = useQueryClient();
   const density = useGalleryStore((state) => state.density);
   const setDensity = useGalleryStore((state) => state.setDensity);
   const sentinel = useRef<HTMLDivElement>(null);
   const query = useInfiniteQuery({
-    queryKey: ['contents'],
+    queryKey,
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam, signal }) => apiRequest(contentsApi.listContents({ cursor: pageParam, limit: 30 }, { signal })),
+    queryFn: ({ pageParam, signal }) => apiRequest(contentsApi.listContents({ cursor: pageParam, limit: 30, condition: condition.length ? condition : undefined }, { signal })),
     getNextPageParam: (page) => page.nextCursor,
   });
   const { hasNextPage, isFetching, isError, fetchNextPage } = query;
@@ -30,7 +32,7 @@ export function useContents() {
   // ページ間で同じIDが返っても、一覧には一度だけ表示する。
   const items = [...new Map(query.data?.pages.flatMap((page) => page.items).map((item) => [item.id, item])).values()];
   return { query, density, setDensity, sentinel, items,
-    refresh: () => { void client.resetQueries({ queryKey: ['contents'], exact: true }); },
+    refresh: () => { void client.resetQueries({ queryKey, exact: true }); },
     retry: () => { void (query.isFetchNextPageError ? query.fetchNextPage() : query.refetch()); },
   };
 }

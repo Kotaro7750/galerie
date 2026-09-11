@@ -13,78 +13,76 @@
  */
 
 import { mapValues } from '../runtime';
+import type { TagExistsKind } from './TagExistsKind';
+import {
+    TagExistsKindFromJSON,
+    TagExistsKindFromJSONTyped,
+    TagExistsKindToJSON,
+    TagExistsKindToJSONTyped,
+} from './TagExistsKind';
+
 /**
- * キーのみのタグ
+ * 指定した名前の有効なタグが型を問わず存在する場合に一致する。キーのみのタグも対象とするがinvalidTagsは対象外。
  * @export
- * @interface KeyOnlyTag
+ * @interface TagExistsTerm
  */
-export interface KeyOnlyTag {
+export interface TagExistsTerm {
+    /**
+     * 
+     * @type {TagExistsKind}
+     * @memberof TagExistsTerm
+     */
+    kind: TagExistsKind;
     /**
      * 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。
      * 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。
      * 長さはUnicodeコードポイント数で数える。
      * 
      * @type {string}
-     * @memberof KeyOnlyTag
+     * @memberof TagExistsTerm
      */
     key: string;
-    /**
-     * 
-     * @type {KeyOnlyTagTypeEnum}
-     * @memberof KeyOnlyTag
-     */
-    type: KeyOnlyTagTypeEnum;
 }
 
 
-/**
- * @export
- */
-export const KeyOnlyTagTypeEnum = {
-    KeyOnly: 'keyOnly'
-} as const;
-export type KeyOnlyTagTypeEnum = typeof KeyOnlyTagTypeEnum[keyof typeof KeyOnlyTagTypeEnum];
-
 
 /**
- * Check if a given object implements the KeyOnlyTag interface.
+ * Check if a given object implements the TagExistsTerm interface.
  */
-export function instanceOfKeyOnlyTag(value: object): value is KeyOnlyTag {
+export function instanceOfTagExistsTerm(value: object): value is TagExistsTerm {
+    if (!('kind' in value) || value['kind'] === undefined) return false;
     if (!('key' in value) || value['key'] === undefined) return false;
-    if (!('type' in value) || value['type'] === undefined) return false;
-    if (value['type'] !== 'keyOnly') return false;
-    
     return true;
 }
 
-export function KeyOnlyTagFromJSON(json: any): KeyOnlyTag {
-    return KeyOnlyTagFromJSONTyped(json, false);
+export function TagExistsTermFromJSON(json: any): TagExistsTerm {
+    return TagExistsTermFromJSONTyped(json, false);
 }
 
-export function KeyOnlyTagFromJSONTyped(json: any, ignoreDiscriminator: boolean): KeyOnlyTag {
+export function TagExistsTermFromJSONTyped(json: any, ignoreDiscriminator: boolean): TagExistsTerm {
     if (json == null) {
         return json;
     }
     return {
         
+        'kind': TagExistsKindFromJSON(json['kind']),
         'key': json['key'],
-        'type': json['type'],
     };
 }
 
-export function KeyOnlyTagToJSON(json: any): KeyOnlyTag {
-    return KeyOnlyTagToJSONTyped(json, false);
+export function TagExistsTermToJSON(json: any): TagExistsTerm {
+    return TagExistsTermToJSONTyped(json, false);
 }
 
-export function KeyOnlyTagToJSONTyped(value?: KeyOnlyTag | null, ignoreDiscriminator: boolean = false): any {
+export function TagExistsTermToJSONTyped(value?: TagExistsTerm | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
 
     return {
         
+        'kind': TagExistsKindToJSON(value['kind']),
         'key': value['key'],
-        'type': value['type'],
     };
 }
 

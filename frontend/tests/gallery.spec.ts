@@ -22,7 +22,11 @@ test('home introduces the gallery without fetching content', async ({ page }) =>
   page.on('request', (request) => { if (new URL(request.url()).pathname.startsWith('/api/')) requested = true; });
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Galerie');
-  await expect(page.getByRole('link', { name: 'ギャラリーを開く' })).toHaveAttribute('href', '#/contents');
+  const galleryLink = page.getByRole('link', { name: 'ギャラリーを開く' });
+  await expect(galleryLink).toHaveAttribute('href', '#/contents');
+  await expect(galleryLink).toHaveClass(/btn-circle.*btn-primary/);
+  await expect(galleryLink.locator('svg')).toHaveClass(/lucide-images/);
+  await expect(page.locator('.divider')).toHaveText('OR');
   expect(requested).toBe(false);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/home-${test.info().project.name}.png`, fullPage: true });
@@ -76,7 +80,7 @@ test('empty, loading and request failure states offer recovery', async ({ page }
   await expect(page.getByRole('alert')).toContainText('カーソルが無効です。');
   failing = false;
   await page.getByRole('button', { name: '再試行', exact: true }).click();
-  await expect(page.getByText('まだコンテンツがありません')).toBeVisible();
+  await expect(page.getByText('コンテンツが見つかりません')).toBeVisible();
 });
 
 test('a failed next page retains images and retries the same cursor', async ({ page }) => {
@@ -92,6 +96,7 @@ test('a failed next page retains images and retries the same cursor', async ({ p
       : { json: { items: [content(1)] } });
   });
   await page.goto('/#/contents');
+  await page.getByRole('link', { name: '画像 1 を開く', exact: true }).scrollIntoViewIfNeeded();
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(page.getByRole('link', { name: /画像 \d+ を開く/ })).toHaveCount(1);
   await page.getByRole('button', { name: '再試行', exact: true }).click();
@@ -117,6 +122,7 @@ test('handles missing content and broken image delivery', async ({ page }) => {
 });
 
 test('shows API tags on hover or focus and on the content page', async ({ page, isMobile }) => {
+  const requestedConditions: unknown[] = [];
   const taggedContent = {
     ...content(0),
     tags: [
@@ -138,14 +144,19 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
     ],
   };
   await mockImages(page);
-  await page.route('**/api/v0/contents?*', (route) => route.fulfill({ json: { items: [taggedContent, content(1)] } }));
+  await page.route('**/api/v0/contents?*', (route) => {
+    const condition = new URL(route.request().url()).searchParams.get('condition');
+    requestedConditions.push(condition ? JSON.parse(condition) : undefined);
+    return route.fulfill({ json: { items: [taggedContent, content(1)] } });
+  });
   await page.route(`**/api/v0/contents/${id}`, (route) => route.fulfill({ json: taggedContent }));
   await page.goto('/#/contents');
   const card = page.getByRole('link', { name: '画像 1 を開く', exact: true });
+  const cardContainer = card.locator('../..');
   const panel = page.getByRole('region', { name: '画像 1 のタグ', exact: true, includeHidden: true });
   if (!isMobile) {
     await expect(panel).toBeHidden();
-    await card.hover();
+    await cardContainer.hover({ position: { x: 4, y: 4 } });
     await expect(panel).toBeVisible();
     await page.getByRole('link', { name: 'Galerie トップページ', exact: true }).hover();
     await expect(panel).toBeHidden();
@@ -155,7 +166,7 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
   await expect(panel).toBeVisible();
   const badges = panel.getByRole('list', { name: 'タグ', exact: true }).getByRole('listitem');
   await expect(badges).toHaveCount(13);
-  expect(await badges.locator(':scope > span').evaluateAll((items) => items.map((item) => item.getAttribute('aria-label')))).toEqual([
+  expect(await badges.locator(':scope > [aria-label]').evaluateAll((items) => items.map((item) => item.getAttribute('aria-label')))).toEqual([
     'animation', 'category: landscape', 'rating: 0', 'score: -3.14',
     'authors: Alice, Bob', 'pages: 1, 3', 'weights: 0.5, 1.5',
     'empty: ', 'emptySet: ', `long: ${'長いタグ'.repeat(100)}`,
@@ -168,7 +179,13 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
     await expect(panel.getByLabel(label, { exact: true }).locator('.lucide-tags')).toBeVisible();
   }
   await expect(category.getByText('landscape', { exact: true })).toBeVisible();
+  await category.click();
+  await expect(page).toHaveURL(/#\/contents$/);
+  await expect(page.getByRole('list', { name: '検索条件（すべてに一致）' }).getByLabel('category', { exact: true })).toBeVisible();
+  await expect.poll(() => requestedConditions.at(-1)).toEqual([{ kind: 'tagExists', key: 'category' }]);
+  await page.getByRole('button', { name: '条件をクリア', exact: true }).click();
   if (!isMobile) {
+    await cardContainer.hover({ position: { x: 4, y: 4 } });
     await category.hover();
     await expect(category.locator('.lucide-tag')).toBeHidden();
     await expect(category.locator('.lucide-hash')).toBeVisible();
@@ -188,10 +205,17 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
   await expect(panel.getByRole('list', { name: '無効なタグ', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/tags-gallery-${test.info().project.name}.png`, fullPage: true });
-  await card.click();
+  await card.click({ position: { x: 4, y: 4 } });
   const detail = page.getByRole('region', { name: 'タグ情報' });
   await expect(detail.getByRole('list', { name: 'タグ', exact: true }).getByRole('listitem')).toHaveCount(13);
+  const detailAnimation = detail.getByLabel('animation', { exact: true });
+  await expect(detailAnimation).toHaveClass(/cursor-pointer/);
   const detailCategory = detail.getByLabel('category: landscape', { exact: true });
+  if (!isMobile) {
+    const background = await detailAnimation.locator('.badge').evaluate((element) => getComputedStyle(element).backgroundColor);
+    await detailAnimation.hover();
+    await expect.poll(() => detailAnimation.locator('.badge').evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(background);
+  }
   await detailCategory.focus();
   await expect(detailCategory.locator('.lucide-tag')).toBeHidden();
   await expect(detailCategory.locator('.lucide-hash')).toBeVisible();
@@ -218,6 +242,9 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
   await expect.poll(() => invalidBadge.evaluate((element) => getComputedStyle(element, '::before').opacity)).toBe('1');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/tags-detail-${test.info().project.name}.png`, fullPage: true });
+  await detailAuthors.click();
+  await expect(page).toHaveURL(/#\/contents$/);
+  await expect.poll(() => requestedConditions.at(-1)).toEqual([{ kind: 'tagExists', key: 'authors' }]);
 });
 
 test('omits empty tag overlays and shows the empty state on the content page', async ({ page }) => {

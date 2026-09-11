@@ -2,14 +2,17 @@ import { IconAnchor, IconButton, IconLink } from '../components/IconAction';
 import { ArrowLeft, ExternalLink, Maximize, Minimize } from 'lucide-react';
 import { useFullscreen } from '../hooks/useFullscreen';
 import { useContent } from '../hooks/useContent';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { MediaTypeIcon } from '../components/MediaTypeIcon';
 import { ContentImage } from '../components/ContentImage';
 import { ContentTags } from '../components/ContentTags';
 import { ErrorMessage, Loading } from '../components/Feedback';
+import { useSearchStore } from '../store';
 
 export function ContentPage() {
   const { contentId = '' } = useParams();
+  const navigate = useNavigate();
+  const { draft, applyTerms } = useSearchStore();
   const { imageContainer, fullscreen, fullscreenError, toggleFullscreen, supported } = useFullscreen();
   const fullscreenLabel = fullscreen ? '全画面表示を解除' : '全画面表示';
   const FullscreenIcon = fullscreen ? Minimize : Maximize;
@@ -28,7 +31,10 @@ export function ContentPage() {
     {query.isPending && <Loading />}
     {query.isError && <ErrorMessage error={query.error} onRetry={() => { void query.refetch(); }} />}
     {query.data && <>
-      <section aria-label="タグ情報"><ContentTags tags={query.data.tags} invalidTags={query.data.invalidTags} /></section>
+      <section aria-label="タグ情報"><ContentTags tags={query.data.tags} invalidTags={query.data.invalidTags} onTagClick={(tag) => {
+        applyTerms([...draft, { kind: 'tagExists', key: tag.key }]);
+        navigate('/contents');
+      }} /></section>
       <div ref={imageContainer} className="relative flex items-center justify-center rounded-box bg-base-200 p-4 [&:fullscreen]:rounded-none [&:fullscreen]:p-0">
         <ContentImage key={query.data.contentUrl} src={query.data.contentUrl} alt={`コンテンツ ${query.data.id}`} />
         {fullscreen && <IconButton className="absolute right-4 top-4" label={fullscreenLabel} icon={FullscreenIcon} onClick={() => { void toggleFullscreen(); }} />}

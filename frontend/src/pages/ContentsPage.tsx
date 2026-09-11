@@ -1,3 +1,4 @@
+import { ContentSearch } from '../components/ContentSearch';
 import { ContentCard } from '../components/ContentCard';
 import { useContents } from '../hooks/useContents';
 import { GalleryToolbar } from '../components/GalleryToolbar';
@@ -6,10 +7,11 @@ import { ErrorMessage, Loading } from '../components/Feedback';
 export function ContentsPage() {
   const { query, density, setDensity, sentinel, items, refresh, retry } = useContents();
   return <section className="space-y-4">
+    <ContentSearch />
     <GalleryToolbar density={density} setDensity={setDensity} refresh={refresh} refreshing={query.isFetching} />
     {query.isPending && <Loading />}
     {query.isError && <ErrorMessage error={query.error} onRetry={retry} />}
-    {query.isSuccess && items.length === 0 && <div className="space-y-4 py-12 text-center"><h2>まだコンテンツがありません</h2><p>画像が追加されると、ここに表示されます。</p></div>}
+    {query.isSuccess && items.length === 0 && <div className="space-y-4 py-12 text-center"><h2>コンテンツが見つかりません</h2><p>検索条件を変更するか、画像を追加してください。</p></div>}
     {items.length > 0 &&
       <div className={`grid gap-4 ${density === 'compact' ? 'grid-cols-3 md:grid-cols-5' : 'grid-cols-2 md:grid-cols-3'}`}>
         {items.map((item, index) => <ContentCard key={item.id} item={item} index={index} />)}
