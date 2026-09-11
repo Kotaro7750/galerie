@@ -5,6 +5,9 @@ use url::Url;
 use uuid::Uuid;
 use uuid::fmt::Hyphenated;
 
+use crate::domain::tag::{SkippedTagSet, TagSet};
+
+pub(crate) mod search_condition;
 pub(crate) mod tag;
 
 #[derive(Debug)]
@@ -51,7 +54,7 @@ impl AsRef<Uuid> for ContentId {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub(crate) enum MediaType {
     Avif,
 }
@@ -70,8 +73,8 @@ pub(crate) struct Content {
     media_type: MediaType,
     content_url: Url,
     thumbnail_url: Url,
-    tags: Vec<tag::Tag>,
-    skipped_tags: Vec<tag::SkippedTag>,
+    tags: TagSet,
+    skipped_tags: SkippedTagSet,
 }
 
 impl Content {
@@ -80,8 +83,8 @@ impl Content {
         media_type: MediaType,
         content_url: Url,
         thumbnail_url: Url,
-        tags: Vec<tag::Tag>,
-        skipped_tags: Vec<tag::SkippedTag>,
+        tags: TagSet,
+        skipped_tags: SkippedTagSet,
     ) -> Self {
         Self {
             id,
@@ -109,11 +112,11 @@ impl Content {
         &self.thumbnail_url
     }
 
-    pub(crate) fn tags(&self) -> &[tag::Tag] {
+    pub(crate) fn tags(&self) -> &TagSet {
         &self.tags
     }
 
-    pub(crate) fn skipped_tags(&self) -> &[tag::SkippedTag] {
+    pub(crate) fn skipped_tags(&self) -> &SkippedTagSet {
         &self.skipped_tags
     }
 }

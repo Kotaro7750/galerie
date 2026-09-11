@@ -1,6 +1,6 @@
 use std::num::NonZeroU64;
 
-use crate::domain::{Content, ContentId, Error};
+use crate::domain::{Content, ContentId, Error, search_condition::SearchCondition};
 
 pub(crate) trait ContentStorage: Send + Sync {
     /// Scan content storage and return a sorted list of content in ascending order by content id.
@@ -19,5 +19,6 @@ pub(crate) trait MetadataIndex: Send + Sync {
         &self,
         limit: u64,
         cursor: Option<String>,
+        search_condition: Option<SearchCondition>,
     ) -> Result<(Vec<Content>, Option<String>), Error>;
 }

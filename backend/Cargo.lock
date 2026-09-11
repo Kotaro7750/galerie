@@ -155,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "backend"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -168,6 +168,7 @@ dependencies = [
  "mime",
  "quick-xml",
  "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "unicode-normalization",
@@ -558,7 +559,7 @@ dependencies = [
 
 [[package]]
 name = "galerie_api"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "ammonia",
  "async-trait",

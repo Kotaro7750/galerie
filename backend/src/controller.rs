@@ -4,18 +4,25 @@ use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
 use http::StatusCode;
 use http::header::CONTENT_TYPE;
-use mime::Mime;
 
 use galerie_api::models::{
     BadRequestProblem, Content, ContentNotFoundProblem, ContentPage, GetContentPathParams,
     IntegerSetTag, IntegerTag, IntegerTagValue, InternalServerErrorProblem, InvalidTag, KeyOnlyTag,
-    ListContentsQueryParams, RealSetTag, RealTag, RealTagValue, Tag, TextSetTag, TextTag,
+    MediaType, RealSetTag, RealTag, RealTagValue, SearchTerm, Tag, TextSetTag, TextTag,
     TextTagValue,
 };
 
+use crate::domain::search_condition::{FileFormatPredicate, TagPredicate, Term};
 use crate::domain::tag::{SkippedTag, Tag as DomainTag};
 use crate::usecase::{GetContentUseCase, ListContentsUseCase};
 use crate::{domain, usecase};
+
+#[derive(serde::Deserialize)]
+pub(crate) struct ListContentsQueryParams {
+    cursor: Option<String>,
+    limit: Option<u8>,
+    condition: Option<String>,
+}
 
 #[derive(Clone)]
 pub(crate) struct ContentController {
@@ -75,9 +82,71 @@ impl ContentController {
             ));
         }
 
-        let (items, cursor) = this
-            .list_contents
-            .execute(limit.into(), query_params.cursor.clone())?;
+        let conditions = query_params
+            .condition
+            .as_deref()
+            .map(serde_json::from_str::<Vec<SearchTerm>>)
+            .transpose()
+            .map_err(|e| {
+                ContentControlllerError::BadRequest(format!("invalid search condition, err: {}", e))
+            })?
+            .unwrap_or_default();
+
+        let mut search_terms = vec![];
+        for condition in &conditions {
+            let term = match condition {
+                SearchTerm::MediaTypeMatchTerm(term) => Term::new_file_format(
+                    FileFormatPredicate::new_match(
+                        term.values
+                            .iter()
+                            .map(|m| (*m).into())
+                            .collect::<Vec<domain::MediaType>>()
+                            .as_slice(),
+                    )
+                    .ok_or(ContentControlllerError::BadRequest(
+                        "invalid search condition term for media type".to_string(),
+                    ))?,
+                ),
+                SearchTerm::TagExistsTerm(term) => Term::new_tag(
+                    domain::tag::TagKey::new(term.key.as_str()).ok_or(
+                        ContentControlllerError::BadRequest(
+                            "invalid search condition term for tag existence".to_string(),
+                        ),
+                    )?,
+                    TagPredicate::Exists,
+                ),
+                SearchTerm::TagMatchTerm(term) => Term::new_tag(
+                    domain::tag::TagKey::new(term.key.as_str()).ok_or(
+                        ContentControlllerError::BadRequest(
+                            "invalid search condition term for tag match".to_string(),
+                        ),
+                    )?,
+                    TagPredicate::new_match(
+                        term.values
+                            .iter()
+                            .map(|v| domain::tag::TextTagValue::new(v.as_str()))
+                            .collect::<Option<Vec<domain::tag::TextTagValue>>>()
+                            .ok_or(ContentControlllerError::BadRequest(
+                                "invalid search condition term for tag match".to_string(),
+                            ))?
+                            .as_slice(),
+                    )
+                    .ok_or(ContentControlllerError::BadRequest(
+                        "invalid search condition term for tag match".to_string(),
+                    ))?,
+                ),
+            };
+
+            search_terms.push(term);
+        }
+
+        let (items, cursor) = this.list_contents.execute(
+            limit.into(),
+            query_params.cursor.clone(),
+            Some(domain::search_condition::SearchCondition::new(
+                search_terms.as_slice(),
+            )),
+        )?;
 
         Ok(Json(ContentPage {
             items: items.into_iter().map(|c| c.into()).collect(),
@@ -86,21 +155,39 @@ impl ContentController {
     }
 }
 
+impl From<domain::MediaType> for MediaType {
+    fn from(media_type: domain::MediaType) -> Self {
+        match media_type {
+            domain::MediaType::Avif => MediaType::ImageSlashAvif,
+        }
+    }
+}
+
+impl From<MediaType> for domain::MediaType {
+    fn from(media_type: MediaType) -> Self {
+        match media_type {
+            MediaType::ImageSlashAvif => domain::MediaType::Avif,
+        }
+    }
+}
+
 impl From<domain::Content> for Content {
     fn from(content: domain::Content) -> Self {
         Content {
             id: content.id().as_ref().to_string(),
-            media_type: Into::<Mime>::into(content.media_type()).to_string(),
+            media_type: content.media_type().into(),
             content_url: content.content_url().to_string(),
             thumbnail_url: content.thumbnail_url().to_string(),
             tags: content
                 .tags()
-                .iter()
+                .as_ref()
+                .values()
                 .map(|tag| tag.clone().into())
                 .collect(),
             invalid_tags: content
                 .skipped_tags()
-                .iter()
+                .as_ref()
+                .values()
                 .map(|tag| tag.clone().into())
                 .collect(),
         }

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::domain::search_condition::SearchCondition;
 use crate::domain::{Content, ContentId, Error};
 use crate::port::MetadataIndex;
 
@@ -32,7 +33,10 @@ impl ListContentsUseCase {
         &self,
         limit: u64,
         cursor: Option<String>,
+        search_condition: Option<SearchCondition>,
     ) -> Result<(Vec<Content>, Option<String>), Error> {
-        self.metadata_index.as_ref().list_contents(limit, cursor)
+        self.metadata_index
+            .as_ref()
+            .list_contents(limit, cursor, search_condition)
     }
 }

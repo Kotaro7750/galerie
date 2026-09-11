@@ -145,8 +145,8 @@ impl ContentStorage for FileSystemContentStorage {
                     format!("{}/{}.avif", self.thumbnail_url_base, id.as_ref())
                         .parse()
                         .unwrap(),
-                    tag_parse_result.parsed().to_vec(),
-                    tag_parse_result.skipped().to_vec(),
+                    tag_parse_result.parsed().clone(),
+                    tag_parse_result.skipped().clone(),
                 );
 
                 if heap.len() as u64 >= limit.get() && content >= *heap.peek().unwrap() {

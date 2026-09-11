@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
+use crate::domain::search_condition::{ContentConditionMatcher, SearchCondition};
 use crate::domain::{Content, ContentId, Error};
 use crate::port::MetadataIndex;
 
@@ -47,13 +48,20 @@ impl MetadataIndex for InMemoryMetadataIndex {
         &self,
         limit: u64,
         cursor: Option<String>,
+        search_condition: Option<SearchCondition>,
     ) -> Result<(Vec<Content>, Option<String>), Error> {
         let first_element_key = match cursor {
             Some(cursor) => {
                 let cursor_content_id = self.cursor_to_id(cursor).ok_or(Error::InvalidCursor)?;
 
-                if self.sorted_contents.contains_key(&cursor_content_id) {
-                    cursor_content_id
+                if let Some(content) = self.sorted_contents.get(&cursor_content_id) {
+                    if let Some(search_condition) = &search_condition
+                        && !search_condition.is_match(content)
+                    {
+                        return Err(Error::InvalidCursor);
+                    } else {
+                        cursor_content_id
+                    }
                 } else {
                     return Err(Error::InvalidCursor);
                 }
@@ -70,6 +78,13 @@ impl MetadataIndex for InMemoryMetadataIndex {
         let contents = self
             .sorted_contents
             .range(first_element_key..)
+            .filter(|(_, content)| {
+                if let Some(search_condition) = &search_condition {
+                    search_condition.is_match(content)
+                } else {
+                    true
+                }
+            })
             .take((limit + 1) as usize) // +1 for next cursor
             .map(|(_, content)| content.clone())
             .collect::<Vec<Content>>();

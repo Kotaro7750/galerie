@@ -101,6 +101,10 @@ pub fn check_xss_map<T>(v: &std::collections::HashMap<String, T>) -> std::result
               )]
                     #[serde(skip_serializing_if="Option::is_none")]
                     pub limit: Option<u8>,
+            /// 検索条件の項のJSON配列をURLエンコードした値。 省略または空配列は全件を表す。 
+                #[serde(rename = "condition")]
+                    #[serde(default)]
+                    pub condition: Vec<models::SearchTerm>,
     }
 
 
@@ -300,11 +304,9 @@ pub struct Content {
     )]
     pub id: String,
 
-    /// コンテンツファイルのメディアタイプ
-    /// Note: inline enums are not fully supported by openapi-generator
     #[serde(rename = "mediaType")]
-          #[validate(custom(function = "check_xss_string"))]
-    pub media_type: String,
+          #[validate(nested)]
+    pub media_type: models::MediaType,
 
     /// コンテンツ配信エンドポイントからコンテンツファイルを取得する絶対URL
     #[serde(rename = "contentUrl")]
@@ -322,7 +324,7 @@ pub struct Content {
     )]
     pub thumbnail_url: String,
 
-    /// 有効なタグ。該当するタグがなければ空配列を返す。
+    /// 有効なタグ。該当するタグがなければ空配列を返す。 同一コンテンツ内のタグのkeyは一意とし、値や型が異なる場合も同じkeyを持つタグの重複は認めない。 
     #[serde(rename = "tags")]
           #[validate(nested)]
     pub tags: Vec<models::Tag>,
@@ -347,7 +349,7 @@ lazy_static::lazy_static! {
 
 impl Content {
     #[allow(clippy::new_without_default, clippy::too_many_arguments)]
-    pub fn new(id: String, media_type: String, content_url: String, thumbnail_url: String, tags: Vec<models::Tag>, invalid_tags: Vec<models::InvalidTag>, ) -> Content {
+    pub fn new(id: String, media_type: models::MediaType, content_url: String, thumbnail_url: String, tags: Vec<models::Tag>, invalid_tags: Vec<models::InvalidTag>, ) -> Content {
         Content {
  id,
  media_type,
@@ -369,9 +371,7 @@ impl std::fmt::Display for Content {
             Some("id".to_string()),
             Some(self.id.to_string()),
 
-
-            Some("mediaType".to_string()),
-            Some(self.media_type.to_string()),
+            // Skipping mediaType in query parameter serialization
 
 
             Some("contentUrl".to_string()),
@@ -403,7 +403,7 @@ impl std::str::FromStr for Content {
         #[allow(dead_code)]
         struct IntermediateRep {
             pub id: Vec<String>,
-            pub media_type: Vec<String>,
+            pub media_type: Vec<models::MediaType>,
             pub content_url: Vec<String>,
             pub thumbnail_url: Vec<String>,
             pub tags: Vec<Vec<models::Tag>>,
@@ -428,7 +428,7 @@ impl std::str::FromStr for Content {
                     #[allow(clippy::redundant_clone)]
                     "id" => intermediate_rep.id.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     #[allow(clippy::redundant_clone)]
-                    "mediaType" => intermediate_rep.media_type.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "mediaType" => intermediate_rep.media_type.push(<models::MediaType as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     #[allow(clippy::redundant_clone)]
                     "contentUrl" => intermediate_rep.content_url.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     #[allow(clippy::redundant_clone)]
@@ -1651,6 +1651,213 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<KeyOnlyTag> 
 
 
 
+/// コンテンツファイルのメディアタイプ
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum MediaType {
+    #[serde(rename = "image/avif")]
+    ImageSlashAvif,
+}
+
+impl validator::Validate for MediaType
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for MediaType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            MediaType::ImageSlashAvif => write!(f, "image/avif"),
+        }
+    }
+}
+
+impl std::str::FromStr for MediaType {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "image/avif" => std::result::Result::Ok(MediaType::ImageSlashAvif),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum MediaTypeMatchKind {
+    #[serde(rename = "mediaTypeMatch")]
+    MediaTypeMatch,
+}
+
+impl validator::Validate for MediaTypeMatchKind
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for MediaTypeMatchKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            MediaTypeMatchKind::MediaTypeMatch => write!(f, "mediaTypeMatch"),
+        }
+    }
+}
+
+impl std::str::FromStr for MediaTypeMatchKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "mediaTypeMatch" => std::result::Result::Ok(MediaTypeMatchKind::MediaTypeMatch),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
+
+
+/// コンテンツファイルフォーマットが指定値のうちいずれかに一致する場合にマッチする
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct MediaTypeMatchTerm {
+    #[serde(rename = "kind")]
+          #[validate(nested)]
+    pub kind: models::MediaTypeMatchKind,
+
+    #[serde(rename = "values")]
+    #[validate(
+            length(min = 1),
+          nested,
+    )]
+    pub values: Vec<models::MediaType>,
+
+}
+
+
+
+impl MediaTypeMatchTerm {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(kind: models::MediaTypeMatchKind, values: Vec<models::MediaType>, ) -> MediaTypeMatchTerm {
+        MediaTypeMatchTerm {
+ kind,
+ values,
+        }
+    }
+}
+
+/// Converts the MediaTypeMatchTerm value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for MediaTypeMatchTerm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+            // Skipping kind in query parameter serialization
+
+            // Skipping values in query parameter serialization
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a MediaTypeMatchTerm value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for MediaTypeMatchTerm {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub kind: Vec<models::MediaTypeMatchKind>,
+            pub values: Vec<Vec<models::MediaType>>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing MediaTypeMatchTerm".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "kind" => intermediate_rep.kind.push(<models::MediaTypeMatchKind as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "values" => return std::result::Result::Err("Parsing a container in this style is not supported in MediaTypeMatchTerm".to_string()),
+                    _ => return std::result::Result::Err("Unexpected key while parsing MediaTypeMatchTerm".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(MediaTypeMatchTerm {
+            kind: intermediate_rep.kind.into_iter().next().ok_or_else(|| "kind missing in MediaTypeMatchTerm".to_string())?,
+            values: intermediate_rep.values.into_iter().next().ok_or_else(|| "values missing in MediaTypeMatchTerm".to_string())?,
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<MediaTypeMatchTerm> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<MediaTypeMatchTerm>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<MediaTypeMatchTerm>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for MediaTypeMatchTerm - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<MediaTypeMatchTerm> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <MediaTypeMatchTerm as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into MediaTypeMatchTerm - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
 /// RFC 9457に準拠したAPIエラーの詳細
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
@@ -2170,6 +2377,58 @@ impl std::ops::DerefMut for RealTagValue {
 
 
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+pub enum SearchTerm {
+    MediaTypeMatchTerm(models::MediaTypeMatchTerm),
+    TagExistsTerm(models::TagExistsTerm),
+    TagMatchTerm(models::TagMatchTerm),
+}
+
+impl validator::Validate for SearchTerm
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        match self {
+            Self::MediaTypeMatchTerm(v) => v.validate(),
+            Self::TagExistsTerm(v) => v.validate(),
+            Self::TagMatchTerm(v) => v.validate(),
+        }
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a SearchTerm value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for SearchTerm {
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        serde_json::from_str(s)
+    }
+}
+
+
+impl From<models::MediaTypeMatchTerm> for SearchTerm {
+    fn from(value: models::MediaTypeMatchTerm) -> Self {
+        Self::MediaTypeMatchTerm(value)
+    }
+}
+impl From<models::TagExistsTerm> for SearchTerm {
+    fn from(value: models::TagExistsTerm) -> Self {
+        Self::TagExistsTerm(value)
+    }
+}
+impl From<models::TagMatchTerm> for SearchTerm {
+    fn from(value: models::TagMatchTerm) -> Self {
+        Self::TagMatchTerm(value)
+    }
+}
+
+
+
+
+
 /// コンテンツに付与されたタグ
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
@@ -2251,6 +2510,177 @@ impl From<models::RealSetTag> for Tag {
 
 
 
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum TagExistsKind {
+    #[serde(rename = "tagExists")]
+    TagExists,
+}
+
+impl validator::Validate for TagExistsKind
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for TagExistsKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            TagExistsKind::TagExists => write!(f, "tagExists"),
+        }
+    }
+}
+
+impl std::str::FromStr for TagExistsKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "tagExists" => std::result::Result::Ok(TagExistsKind::TagExists),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
+
+
+/// 指定した名前の有効なタグが型を問わず存在する場合に一致する。キーのみのタグも対象とするがinvalidTagsは対象外。
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct TagExistsTerm {
+    #[serde(rename = "kind")]
+          #[validate(nested)]
+    pub kind: models::TagExistsKind,
+
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+}
+
+
+
+impl TagExistsTerm {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(kind: models::TagExistsKind, key: String, ) -> TagExistsTerm {
+        TagExistsTerm {
+ kind,
+ key,
+        }
+    }
+}
+
+/// Converts the TagExistsTerm value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for TagExistsTerm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+            // Skipping kind in query parameter serialization
+
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a TagExistsTerm value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for TagExistsTerm {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub kind: Vec<models::TagExistsKind>,
+            pub key: Vec<String>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing TagExistsTerm".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "kind" => intermediate_rep.kind.push(<models::TagExistsKind as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    _ => return std::result::Result::Err("Unexpected key while parsing TagExistsTerm".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(TagExistsTerm {
+            kind: intermediate_rep.kind.into_iter().next().ok_or_else(|| "kind missing in TagExistsTerm".to_string())?,
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in TagExistsTerm".to_string())?,
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<TagExistsTerm> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<TagExistsTerm>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<TagExistsTerm>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for TagExistsTerm - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<TagExistsTerm> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <TagExistsTerm as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into TagExistsTerm - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
 /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
 #[derive(Debug, Clone, PartialEq, PartialOrd,  serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
@@ -2298,6 +2728,192 @@ impl std::ops::Deref for TagKey {
 impl std::ops::DerefMut for TagKey {
     fn deref_mut(&mut self) -> &mut String {
         &mut self.0
+    }
+}
+
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum TagMatchKind {
+    #[serde(rename = "tagMatch")]
+    TagMatch,
+}
+
+impl validator::Validate for TagMatchKind
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for TagMatchKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            TagMatchKind::TagMatch => write!(f, "tagMatch"),
+        }
+    }
+}
+
+impl std::str::FromStr for TagMatchKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "tagMatch" => std::result::Result::Ok(TagMatchKind::TagMatch),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
+
+
+/// 指定したキーを持つタグの値が、指定値のいずれかと一致する場合に一致する。 タグが集合型の場合には、いずれかの要素が指定値のいずれかと一致すれば一致する。 有効な文字列型・文字列集合型のタグが存在しない場合は不一致とする。 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct TagMatchTerm {
+    #[serde(rename = "kind")]
+          #[validate(nested)]
+    pub kind: models::TagMatchKind,
+
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+    #[serde(rename = "values")]
+    #[validate(
+            length(min = 1),
+          nested,
+    )]
+    pub values: Vec<models::TextTagValue>,
+
+}
+
+
+
+impl TagMatchTerm {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(kind: models::TagMatchKind, key: String, values: Vec<models::TextTagValue>, ) -> TagMatchTerm {
+        TagMatchTerm {
+ kind,
+ key,
+ values,
+        }
+    }
+}
+
+/// Converts the TagMatchTerm value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for TagMatchTerm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+            // Skipping kind in query parameter serialization
+
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+
+            Some("values".to_string()),
+            Some(self.values.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",")),
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a TagMatchTerm value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for TagMatchTerm {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub kind: Vec<models::TagMatchKind>,
+            pub key: Vec<String>,
+            pub values: Vec<Vec<models::TextTagValue>>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing TagMatchTerm".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "kind" => intermediate_rep.kind.push(<models::TagMatchKind as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "values" => return std::result::Result::Err("Parsing a container in this style is not supported in TagMatchTerm".to_string()),
+                    _ => return std::result::Result::Err("Unexpected key while parsing TagMatchTerm".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(TagMatchTerm {
+            kind: intermediate_rep.kind.into_iter().next().ok_or_else(|| "kind missing in TagMatchTerm".to_string())?,
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in TagMatchTerm".to_string())?,
+            values: intermediate_rep.values.into_iter().next().ok_or_else(|| "values missing in TagMatchTerm".to_string())?,
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<TagMatchTerm> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<TagMatchTerm>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<TagMatchTerm>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for TagMatchTerm - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<TagMatchTerm> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <TagMatchTerm as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into TagMatchTerm - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
     }
 }
 

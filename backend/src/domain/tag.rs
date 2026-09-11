@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use quick_xml::{
     events::Event,
@@ -56,6 +56,15 @@ impl Tag {
             | Tag::RealSet { key, .. } => key,
         }
     }
+
+    /// Check if the tag contains the specified text value.
+    pub(crate) fn contain_text_value(&self, text_value: &TextTagValue) -> bool {
+        match self {
+            Self::Text { key: _, value } => value == text_value,
+            Self::TextSet { key: _, values } => values.contains(text_value),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -65,7 +74,7 @@ pub(crate) struct TagKey {
 
 impl TagKey {
     /// Constructs a new `TagKey` if the provided key is valid according to the specified rules.
-    fn new(key: &str) -> Option<Self> {
+    pub(crate) fn new(key: &str) -> Option<Self> {
         if Self::is_valid_for_key(key) {
             Some(Self {
                 key: key.to_string(),
@@ -106,7 +115,7 @@ impl AsRef<str> for TagKey {
 pub(crate) struct TextTagValue(String);
 
 impl TextTagValue {
-    fn new(value: &str) -> Option<Self> {
+    pub(crate) fn new(value: &str) -> Option<Self> {
         if unicode_normalization::is_nfc(value) {
             Some(Self(value.to_string()))
         } else {
@@ -150,23 +159,55 @@ impl AsRef<f64> for RealTagValue {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub(crate) struct Metadata {
-    parsed: Vec<Tag>,
-    skipped: Vec<SkippedTag>,
+    parsed: TagSet,
+    skipped: SkippedTagSet,
 }
 
 impl Metadata {
-    pub(crate) fn parsed(&self) -> &[Tag] {
+    pub(crate) fn parsed(&self) -> &TagSet {
         &self.parsed
     }
 
-    pub(crate) fn skipped(&self) -> &[SkippedTag] {
+    pub(crate) fn skipped(&self) -> &SkippedTagSet {
         &self.skipped
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// Represents a set of tags, ensuring uniqueness of tag keys.
+pub(crate) struct TagSet {
+    tags: HashMap<TagKey, Tag>,
+}
+
+impl TagSet {
+    pub(crate) fn new(tags: &[Tag]) -> Option<Self> {
+        // Check for duplicate keys
+        let mut set = HashSet::new();
+        for tag in tags {
+            if !set.insert(tag.key().clone()) {
+                return None;
+            }
+        }
+
+        Some(Self {
+            tags: tags
+                .iter()
+                .map(|tag| (tag.key().clone(), tag.clone()))
+                .collect(),
+        })
+    }
+}
+
+impl AsRef<HashMap<TagKey, Tag>> for TagSet {
+    fn as_ref(&self) -> &HashMap<TagKey, Tag> {
+        &self.tags
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+/// Represents a tag that was skipped during parsing, along with the reason for skipping.
 pub(crate) struct SkippedTag {
     key: String,
     reason: SkippedReason,
@@ -191,12 +232,44 @@ pub(crate) enum SkippedReason {
     DuplicateSetValue,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+/// Represents a set of skipped tags, ensuring uniqueness of tag keys.
+pub(crate) struct SkippedTagSet {
+    tags: HashMap<String, SkippedTag>,
+}
+
+impl SkippedTagSet {
+    pub(crate) fn new(tags: &[SkippedTag]) -> Option<Self> {
+        let mut set = HashSet::new();
+        for tag in tags {
+            if !set.insert(tag.key.clone()) {
+                return None;
+            }
+        }
+
+        Some(Self {
+            tags: tags
+                .iter()
+                .map(|tag| (tag.key.clone(), tag.clone()))
+                .collect(),
+        })
+    }
+}
+
+impl AsRef<HashMap<String, SkippedTag>> for SkippedTagSet {
+    fn as_ref(&self) -> &HashMap<String, SkippedTag> {
+        &self.tags
+    }
+}
+
 #[derive(Debug, Error)]
 pub(crate) enum ParseMetadataError {
     #[error("Failed to parse XMP XML: {0}")]
     InvalidXml(#[from] quick_xml::Error),
     #[error("Failed to parse XMP metadata: {0}")]
     InvalidXmp(#[from] xmp_toolkit::XmpError),
+    #[error("Internal error: {0}")]
+    Internal(String),
 }
 
 /// Validate tag uniqueness before XMP Toolkit discards duplicate properties.
@@ -266,12 +339,15 @@ pub(crate) fn parse_metadata(metadata_xmp: &str) -> Result<Metadata, ParseMetada
     }
 
     let metadata = metadata_xmp.parse::<XmpMeta>()?;
-    Ok(parse_xmp(metadata, &duplicate_keys))
+    parse_xmp(metadata, &duplicate_keys)
 }
 
 /// Parse and validate already decoded XMP metadata.
 /// Passed `duplicate_keys` are skipped.
-fn parse_xmp(metadata: XmpMeta, duplicate_keys: &HashSet<String>) -> Metadata {
+fn parse_xmp(
+    metadata: XmpMeta,
+    duplicate_keys: &HashSet<String>,
+) -> Result<Metadata, ParseMetadataError> {
     let mut parsed = Vec::new();
     let mut skipped = duplicate_keys
         .iter()
@@ -298,10 +374,15 @@ fn parse_xmp(metadata: XmpMeta, duplicate_keys: &HashSet<String>) -> Metadata {
         }
     }
 
-    parsed.sort_by(|left, right| left.key().cmp(right.key()));
-    skipped.sort_by(|left, right| left.key.cmp(&right.key));
-
-    Metadata { parsed, skipped }
+    // Duplicate keys are already skipped, so we can safely collect the parsed tags into a HashMap.
+    Ok(Metadata {
+        parsed: TagSet::new(parsed.as_slice()).ok_or(ParseMetadataError::Internal(
+            "Duplicate keys found after parsing, which should not happen.".to_string(),
+        ))?,
+        skipped: SkippedTagSet::new(skipped.as_slice()).ok_or(ParseMetadataError::Internal(
+            "Duplicate skipped keys found after parsing, which should not happen.".to_string(),
+        ))?,
+    })
 }
 
 /// Parse a single XMP property into a Tag, or return a SkippedTag if it cannot be parsed as a valid Tag.
@@ -466,10 +547,17 @@ mod tests {
             "Failed to parse XMP XML: {:?}",
             parse_result.err()
         );
-        assert!(parse_result.unwrap().skipped().contains(&SkippedTag {
-            key: "DuplicatedTag".to_string(),
-            reason: SkippedReason::DuplicateKey,
-        }));
+        assert_eq!(
+            parse_result
+                .unwrap()
+                .skipped()
+                .as_ref()
+                .get("DuplicatedTag"),
+            Some(&SkippedTag {
+                key: "DuplicatedTag".to_string(),
+                reason: SkippedReason::DuplicateKey,
+            })
+        );
     }
 
     #[test]
@@ -480,78 +568,86 @@ mod tests {
 
         assert_eq!(
             parse_result.parsed,
-            vec![
-                Tag::TextSet {
-                    key: TagKey::new("Array").unwrap(),
-                    values: vec![
-                        TextTagValue("あ".to_string()),
-                        TextTagValue("い".to_string()),
-                        TextTagValue("う".to_string())
-                    ]
-                    .into_iter()
-                    .collect()
-                },
-                Tag::KeyOnly {
-                    key: TagKey::new("BooleanTrue").unwrap()
-                },
-                Tag::Text {
-                    key: TagKey::new("Integer").unwrap(),
-                    value: TextTagValue::new("-100").unwrap()
-                },
-                Tag::TextSet {
-                    key: TagKey::new("IntegerArray").unwrap(),
-                    values: vec![
-                        TextTagValue("-100".to_string()),
-                        TextTagValue("0".to_string()),
-                        TextTagValue("100".to_string())
-                    ]
-                    .into_iter()
-                    .collect()
-                },
-                Tag::Text {
-                    key: TagKey::new("Real").unwrap(),
-                    value: TextTagValue::new("3.14").unwrap()
-                },
-                Tag::TextSet {
-                    key: TagKey::new("RealArray").unwrap(),
-                    values: vec![
-                        TextTagValue("-2.5".to_string()),
-                        TextTagValue("0.0".to_string()),
-                        TextTagValue("3.14".to_string())
-                    ]
-                    .into_iter()
-                    .collect()
-                },
-                Tag::Text {
-                    key: TagKey::new("Text").unwrap(),
-                    value: TextTagValue::new("これはテストです").unwrap()
-                },
-            ]
+            TagSet::new(
+                vec![
+                    Tag::TextSet {
+                        key: TagKey::new("Array").unwrap(),
+                        values: vec![
+                            TextTagValue("あ".to_string()),
+                            TextTagValue("い".to_string()),
+                            TextTagValue("う".to_string())
+                        ]
+                        .into_iter()
+                        .collect()
+                    },
+                    Tag::KeyOnly {
+                        key: TagKey::new("BooleanTrue").unwrap()
+                    },
+                    Tag::Text {
+                        key: TagKey::new("Integer").unwrap(),
+                        value: TextTagValue::new("-100").unwrap()
+                    },
+                    Tag::TextSet {
+                        key: TagKey::new("IntegerArray").unwrap(),
+                        values: vec![
+                            TextTagValue("-100".to_string()),
+                            TextTagValue("0".to_string()),
+                            TextTagValue("100".to_string())
+                        ]
+                        .into_iter()
+                        .collect()
+                    },
+                    Tag::Text {
+                        key: TagKey::new("Real").unwrap(),
+                        value: TextTagValue::new("3.14").unwrap()
+                    },
+                    Tag::TextSet {
+                        key: TagKey::new("RealArray").unwrap(),
+                        values: vec![
+                            TextTagValue("-2.5".to_string()),
+                            TextTagValue("0.0".to_string()),
+                            TextTagValue("3.14".to_string())
+                        ]
+                        .into_iter()
+                        .collect()
+                    },
+                    Tag::Text {
+                        key: TagKey::new("Text").unwrap(),
+                        value: TextTagValue::new("これはテストです").unwrap()
+                    },
+                ]
+                .as_slice()
+            )
+            .unwrap()
         );
         assert_eq!(
             parse_result.skipped,
-            vec![
-                SkippedTag {
-                    key: "BooleanFalse".to_string(),
-                    reason: SkippedReason::InvalidValue
-                },
-                SkippedTag {
-                    key: "DuplicatedSet".to_string(),
-                    reason: SkippedReason::DuplicateSetValue
-                },
-                SkippedTag {
-                    key: "Invalid-Key".to_string(),
-                    reason: SkippedReason::InvalidKey
-                },
-                SkippedTag {
-                    key: "OrderedArray".to_string(),
-                    reason: SkippedReason::UnsupportedValueType
-                },
-                SkippedTag {
-                    key: "struct".to_string(),
-                    reason: SkippedReason::UnsupportedValueType
-                },
-            ]
+            SkippedTagSet::new(
+                vec![
+                    SkippedTag {
+                        key: "BooleanFalse".to_string(),
+                        reason: SkippedReason::InvalidValue
+                    },
+                    SkippedTag {
+                        key: "DuplicatedSet".to_string(),
+                        reason: SkippedReason::DuplicateSetValue
+                    },
+                    SkippedTag {
+                        key: "Invalid-Key".to_string(),
+                        reason: SkippedReason::InvalidKey
+                    },
+                    SkippedTag {
+                        key: "OrderedArray".to_string(),
+                        reason: SkippedReason::UnsupportedValueType
+                    },
+                    SkippedTag {
+                        key: "struct".to_string(),
+                        reason: SkippedReason::UnsupportedValueType
+                    },
+                ]
+                .as_slice()
+            )
+            .unwrap()
         );
     }
 }
