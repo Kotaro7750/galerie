@@ -59,6 +59,14 @@ pub(crate) enum MediaType {
     Avif,
 }
 
+impl MediaType {
+    pub(crate) fn extension(&self) -> &'static str {
+        match self {
+            MediaType::Avif => "avif",
+        }
+    }
+}
+
 impl From<MediaType> for Mime {
     fn from(media_type: MediaType) -> Self {
         match media_type {

@@ -1,11 +1,13 @@
+use async_trait::async_trait;
 use std::num::NonZeroU64;
 
 use crate::domain::{Content, ContentId, Error, search_condition::SearchCondition};
 
+#[async_trait]
 pub(crate) trait ContentStorage: Send + Sync {
     /// Scan content storage and return a sorted list of content in ascending order by content id.
     /// This method returns at most `limit` number of content, and a cursor to continue scanning from the last content id.
-    fn scan_contents(
+    async fn scan_contents(
         &self,
         limit: NonZeroU64,
         cursor: Option<ContentId>,

@@ -4,16 +4,17 @@ use std::sync::Arc;
 use axum::Router;
 use config::Config;
 use controller::ContentController;
-use serde::Deserialize;
 use usecase::GetContentUseCase;
 
-use crate::infrastructure::content_storage::FileSystemContentStorage;
+use crate::galerie_config::GalerieConfig;
 use crate::infrastructure::metadata_index::InMemoryMetadataIndex;
-use crate::port::{ContentStorage, MetadataIndex};
+use crate::port::MetadataIndex;
 use crate::usecase::ListContentsUseCase;
 
 mod controller;
 mod domain;
+#[path = "config.rs"]
+mod galerie_config;
 mod infrastructure;
 mod port;
 mod usecase;
@@ -31,20 +32,18 @@ async fn main() {
         .try_deserialize::<GalerieConfig>()
         .unwrap();
 
-    let content_storage = Arc::new(
-        FileSystemContentStorage::new(
-            config.content_storage.file_system.content_root_path,
-            config.content_storage.file_system.content_url_base,
-            config.content_storage.file_system.thumbnail_url_base,
-        )
-        .unwrap(),
-    );
+    let content_storage = config
+        .content_storage()
+        .construct_content_storage()
+        .await
+        .unwrap();
     let mut metadata_index = InMemoryMetadataIndex::new();
 
     let mut cursor = None;
     loop {
         let (contents, next_cursor) = content_storage
             .scan_contents(NonZeroU64::new(100).unwrap(), cursor)
+            .await
             .unwrap();
         metadata_index.add_contents(&contents).unwrap();
         cursor = next_cursor;
@@ -65,21 +64,4 @@ async fn main() {
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
-}
-
-#[derive(Debug, Deserialize)]
-struct GalerieConfig {
-    content_storage: ContentStorageConfig,
-}
-
-#[derive(Debug, Deserialize)]
-struct ContentStorageConfig {
-    file_system: FileSystemContentStorageConfig,
-}
-
-#[derive(Debug, Deserialize)]
-struct FileSystemContentStorageConfig {
-    content_root_path: String,
-    content_url_base: String,
-    thumbnail_url_base: String,
 }

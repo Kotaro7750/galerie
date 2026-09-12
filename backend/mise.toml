@@ -6,6 +6,7 @@ dir = "."
 run = "cargo run"
 
 [tasks.dev.env]
+GALERIE_CONTENT_STORAGE__MODE = { default = "FileSystem" }
 GALERIE_CONTENT_STORAGE__FILE_SYSTEM__CONTENT_ROOT_PATH = "../sample"
 # ../sample を別途 HTTP 配信するローカルサーバーの URL。
 GALERIE_CONTENT_STORAGE__FILE_SYSTEM__CONTENT_URL_BASE = "http://localhost:8000"
