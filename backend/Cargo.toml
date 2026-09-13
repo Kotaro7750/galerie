@@ -4,6 +4,7 @@ version = "0.5.1"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.104"
 async-trait = "0.1.92"
 aws-config = { version = "1.12.0", features = ["credentials-login"] }
 aws-sdk-s3 = { version = "1.146.0", features = ["test-util"] }

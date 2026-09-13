@@ -10,10 +10,13 @@ use crate::domain::tag::{SkippedTagSet, TagSet};
 pub(crate) mod search_condition;
 pub(crate) mod tag;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    #[error("content not found")]
     ContentNotFound,
+    #[error("invalid cursor")]
     InvalidCursor,
+    #[error("internal error: {0}")]
     Internal(String),
 }
 
