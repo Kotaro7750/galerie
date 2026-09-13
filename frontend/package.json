@@ -1,7 +1,7 @@
 {
   "name": "galerie-frontend",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,13 +9,16 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "playwright test",
+    "test:auth": "playwright test --config playwright.auth.config.ts",
     "api:generate": "openapi-generator-cli generate -i ../contracts/api/openapi.yaml -g typescript-fetch -o src/api/generated --additional-properties=hideGenerationTimestamp=true --global-property=apiDocs=false,modelDocs=false,apiTests=false,modelTests=false && node scripts/fix_generated_query.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.0.0",
     "lucide-react": "^1.42.0",
+    "oidc-client-ts": "^3.5.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
+    "react-oidc-context": "^3.3.1",
     "react-router-dom": "^7.0.0",
     "zustand": "^5.0.0"
   },

@@ -1,5 +1,6 @@
 import { QueryClient } from '@tanstack/react-query';
 import { Configuration, ContentsApi, ResponseError } from './generated';
+import { authEnabled, getAccessToken } from '../auth/config';
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -10,6 +11,13 @@ export class ApiError extends Error {
 
 export const contentsApi = new ContentsApi(new Configuration({
   basePath: (import.meta.env.VITE_API_BASE_URL || '/api/v0').replace(/\/$/, ''),
+  middleware: authEnabled ? [{
+    pre: async ({ url, init }) => {
+      const token = await getAccessToken();
+      if (!token) throw new ApiError(401, 'ログインの有効期限が切れました。再度ログインしてください。');
+      return { url, init: { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } } };
+    },
+  }] : [],
 }));
 
 // Keep HTTP error presentation outside the generated client so regeneration is safe.

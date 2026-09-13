@@ -10,5 +10,5 @@
 # 本ディレクトリのドキュメントの構造
 * [overview.md](./overview.md): 本ドキュメント
 * [framework.md](./framework.md): フロントエンドSPAで使用する記述言語、ビルドツール、フレームワーク及びUIライブラリを記述する
-* [software-architecture.md](./software-architecture.md): フロントエンドSPAの責務分割と、状態管理及びデータ取得を担うライブラリの選定方針を記述する
+* [software-architecture.md](./software-architecture.md): フロントエンドSPAの責務分割と、ライブラリの選定方針を記述する
 * [page.md](./page.md): フロントエンドSPAの各ページの役割、認証要否及びコンテンツの表示方法を記述する

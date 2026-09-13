@@ -24,3 +24,9 @@ SPAフレームワークとしては[React](https://ja.react.dev/)を利用す�
 ## アイコンセット
 [Lucide](https://lucide.dev/)を使用する。
 公式で[Reactパッケージ](https://lucide.dev/guide/react/)が用意されているため実際にはそれを利用する。
+
+## OAuth 2.0
+OAuth 2.0 Authorization Code Flow with PKCE及びOpenID Connectの処理には、
+[react-oidc-context](https://github.com/authts/react-oidc-context)と、その基盤である[oidc-client-ts](https://github.com/authts/oidc-client-ts)を使用する。
+
+認証処理はこれらのライブラリに委譲し、独自実装しない。
