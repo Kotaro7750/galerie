@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Galerie API
-  version: 0.5.0
+  version: 0.5.1
   license:
     name: MIT License
     identifier: MIT
@@ -35,9 +35,24 @@ paths:
 
         認可情報が必要な構成では、レスポンスの`Set-Cookie`ヘッダーによって設定する。
         Cookieの具体的な内容は実装の詳細であり、クライアントは解釈または直接操作してはならない。
+
+        レスポンスに`invalidAfter`が含まれる場合、その時刻以降は設定された認可情報の有効性を保証しない。
+        クライアントは`invalidAfter`より前の任意の時刻に本APIを再度実行し、コンテンツアクセス設定を更新できる。
       responses:
-        "204":
+        "200":
           description: コンテンツアクセスに必要な設定が完了した
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentAccessConfiguration"
+              examples:
+                refreshRequired:
+                  summary: 期限までに更新が必要な設定
+                  value:
+                    invalidAfter: "2026-09-16T12:30:00Z"
+                refreshNotRequired:
+                  summary: 更新が不要な設定
+                  value: {}
         "500":
           $ref: "#/components/responses/InternalServerError"
     delete:
@@ -278,6 +293,16 @@ components:
       example: 30
 
   schemas:
+    ContentAccessConfiguration:
+      type: object
+      description: クライアントに設定されたコンテンツアクセス設定の有効期限
+      additionalProperties: false
+      properties:
+        invalidAfter:
+          type: string
+          format: date-time
+          description: この時刻以降はコンテンツアクセス設定の有効性を保証しない。有効期限がない場合は省略する。
+
     SearchCondition:
       type: array
       items:
