@@ -2,7 +2,7 @@
 
 本APIは、Galerieアプリケーションが画像やPDF化した漫画等のマルチメディアを提供するためのAPIである。
 
-なお、このAPI自体はコンテンツそのものの配信を行うことを想定しておらず、このAPIを利用してコンテンツのメタデータを取得し、その中に含まれる情報を使ってコンテンツを取得することを想定している。
+なお、このAPI自体はコンテンツそのものの配信を行わない。クライアントは本APIからコンテンツのメタデータを取得し、その中に含まれる情報を使ってコンテンツを取得する。
 
 
 ## Overview
@@ -14,8 +14,8 @@ server, you can easily generate a server stub.
 
 To see how to make this your own, look here: [README](https://openapi-generator.tech)
 
-- API version: 0.4.0
-- Build date: 2026-09-11T17:07:27.464604+09:00[Asia/Tokyo]
+- API version: 0.5.0
+- Build date: 2026-09-15T15:27:21.794954+09:00[Asia/Tokyo]
 - Generator version: 7.24.0
 
 

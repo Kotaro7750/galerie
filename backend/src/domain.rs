@@ -7,6 +7,7 @@ use uuid::fmt::Hyphenated;
 
 use crate::domain::tag::{SkippedTagSet, TagSet};
 
+pub(crate) mod content_access;
 pub(crate) mod search_condition;
 pub(crate) mod tag;
 

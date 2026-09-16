@@ -1,7 +1,15 @@
 use async_trait::async_trait;
 use std::num::NonZeroU64;
 
-use crate::domain::{Content, ContentId, Error, search_condition::SearchCondition};
+use crate::domain::{
+    Content, ContentId, Error, content_access::ContentAccessCookie,
+    search_condition::SearchCondition,
+};
+
+pub(crate) trait ContentAccessConfigurator: Send + Sync {
+    fn configure(&self) -> Result<Vec<ContentAccessCookie>, Error>;
+    fn clear(&self) -> Result<Vec<ContentAccessCookie>, Error>;
+}
 
 #[async_trait]
 pub(crate) trait ContentStorage: Send + Sync {

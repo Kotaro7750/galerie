@@ -1,8 +1,38 @@
 use std::sync::Arc;
 
 use crate::domain::search_condition::SearchCondition;
-use crate::domain::{Content, ContentId, Error};
-use crate::port::MetadataIndex;
+use crate::domain::{Content, ContentId, Error, content_access::ContentAccessCookie};
+use crate::port::{ContentAccessConfigurator, MetadataIndex};
+
+#[derive(Clone)]
+pub(crate) struct ConfigureContentAccessUseCase {
+    configurator: Arc<dyn ContentAccessConfigurator>,
+}
+
+impl ConfigureContentAccessUseCase {
+    pub(crate) fn new(configurator: Arc<dyn ContentAccessConfigurator>) -> Self {
+        Self { configurator }
+    }
+
+    pub(crate) fn execute(&self) -> Result<Vec<ContentAccessCookie>, Error> {
+        self.configurator.configure()
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct ClearContentAccessUseCase {
+    configurator: Arc<dyn ContentAccessConfigurator>,
+}
+
+impl ClearContentAccessUseCase {
+    pub(crate) fn new(configurator: Arc<dyn ContentAccessConfigurator>) -> Self {
+        Self { configurator }
+    }
+
+    pub(crate) fn execute(&self) -> Result<Vec<ContentAccessCookie>, Error> {
+        self.configurator.clear()
+    }
+}
 
 #[derive(Clone)]
 pub(crate) struct GetContentUseCase {

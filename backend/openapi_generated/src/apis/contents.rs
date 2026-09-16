@@ -16,7 +16,7 @@ pub enum GetContentResponse {
     Status200
     (models::Content)
     ,
-    /// リクエストパラメーターが不正、またはカーソルが無効である
+    /// リクエストパラメーターが不正である
     Status400
     (models::BadRequestProblem)
     ,
@@ -37,7 +37,7 @@ pub enum ListContentsResponse {
     Status200
     (models::ContentPage)
     ,
-    /// リクエストパラメーターが不正、またはカーソルが無効である
+    /// リクエストパラメーターが不正である
     Status400
     (models::BadRequestProblem)
     ,

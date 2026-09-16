@@ -1,20 +1,20 @@
 use std::num::NonZeroU64;
 use std::sync::Arc;
 
+use ::config::Config;
 use axum::Router;
-use config::Config;
-use controller::ContentController;
-use usecase::GetContentUseCase;
+use controller::content::ContentController;
+use controller::content_access::ContentAccessController;
+use usecase::{ClearContentAccessUseCase, ConfigureContentAccessUseCase, GetContentUseCase};
 
-use crate::galerie_config::GalerieConfig;
+use crate::config::GalerieConfig;
 use crate::infrastructure::metadata_index::InMemoryMetadataIndex;
 use crate::port::MetadataIndex;
 use crate::usecase::ListContentsUseCase;
 
+mod config;
 mod controller;
 mod domain;
-#[path = "config.rs"]
-mod galerie_config;
 mod infrastructure;
 mod port;
 mod usecase;
@@ -23,7 +23,7 @@ mod usecase;
 async fn main() -> anyhow::Result<()> {
     let config = Config::builder()
         .add_source(
-            config::Environment::with_prefix("GALERIE")
+            ::config::Environment::with_prefix("GALERIE")
                 .separator("__")
                 .prefix_separator("_"),
         )
@@ -48,15 +48,24 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     let metadata_index = Arc::new(metadata_index);
+    let content_access_configurator = config
+        .content_access()
+        .construct_content_access_configurator()?;
 
     let contents_controller = ContentController::new(
         ListContentsUseCase::new(metadata_index.clone()),
         GetContentUseCase::new(metadata_index.clone()),
     );
-    let api_v0_router = Router::new().nest("/contents", contents_controller.router());
+    let content_access_controller = ContentAccessController::new(
+        ConfigureContentAccessUseCase::new(content_access_configurator.clone()),
+        ClearContentAccessUseCase::new(content_access_configurator),
+    );
+    let api_v0_router = Router::new()
+        .nest("/contents", contents_controller.router())
+        .nest("/content-access", content_access_controller.router());
     let app = Router::new().nest("/api/v0", api_v0_router);
 
     // run our app with hyper, listening globally on port 3000
-    let listener = tokio::net::TcpListener::bind(config.listen_address_with_default()).await?;
+    let listener = tokio::net::TcpListener::bind(config.listen_address()).await?;
     Ok(axum::serve(listener, app).await?)
 }
