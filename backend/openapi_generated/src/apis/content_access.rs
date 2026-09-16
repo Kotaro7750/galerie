@@ -25,7 +25,8 @@ pub enum ClearContentAccessResponse {
 #[allow(clippy::large_enum_variant)]
 pub enum ConfigureContentAccessResponse {
     /// コンテンツアクセスに必要な設定が完了した
-    Status204
+    Status200
+    (models::ContentAccessConfiguration)
     ,
     /// サーバー内部で予期しないエラーが発生した
     Status500

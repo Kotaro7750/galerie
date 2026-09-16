@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::domain::search_condition::SearchCondition;
-use crate::domain::{Content, ContentId, Error, content_access::ContentAccessCookie};
+use crate::domain::{Content, ContentId, Error, content_access::ContentAccessConfiguration};
 use crate::port::{ContentAccessConfigurator, MetadataIndex};
 
 #[derive(Clone)]
@@ -14,7 +14,7 @@ impl ConfigureContentAccessUseCase {
         Self { configurator }
     }
 
-    pub(crate) fn execute(&self) -> Result<Vec<ContentAccessCookie>, Error> {
+    pub(crate) fn execute(&self) -> Result<ContentAccessConfiguration, Error> {
         self.configurator.configure()
     }
 }
@@ -29,7 +29,7 @@ impl ClearContentAccessUseCase {
         Self { configurator }
     }
 
-    pub(crate) fn execute(&self) -> Result<Vec<ContentAccessCookie>, Error> {
+    pub(crate) fn execute(&self) -> Result<ContentAccessConfiguration, Error> {
         self.configurator.clear()
     }
 }

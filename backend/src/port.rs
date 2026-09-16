@@ -2,13 +2,13 @@ use async_trait::async_trait;
 use std::num::NonZeroU64;
 
 use crate::domain::{
-    Content, ContentId, Error, content_access::ContentAccessCookie,
+    Content, ContentId, Error, content_access::ContentAccessConfiguration,
     search_condition::SearchCondition,
 };
 
 pub(crate) trait ContentAccessConfigurator: Send + Sync {
-    fn configure(&self) -> Result<Vec<ContentAccessCookie>, Error>;
-    fn clear(&self) -> Result<Vec<ContentAccessCookie>, Error>;
+    fn configure(&self) -> Result<ContentAccessConfiguration, Error>;
+    fn clear(&self) -> Result<ContentAccessConfiguration, Error>;
 }
 
 #[async_trait]

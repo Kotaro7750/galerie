@@ -1,3 +1,32 @@
+use std::time::SystemTime;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+/// Represents the configuration for content access
+pub(crate) struct ContentAccessConfiguration {
+    cookies: Vec<ContentAccessCookie>,
+    invalid_after: Option<SystemTime>,
+}
+
+impl ContentAccessConfiguration {
+    pub(crate) fn new(
+        cookies: Vec<ContentAccessCookie>,
+        invalid_after: Option<SystemTime>,
+    ) -> Self {
+        Self {
+            cookies,
+            invalid_after,
+        }
+    }
+
+    pub(crate) fn cookies(self) -> Vec<ContentAccessCookie> {
+        self.cookies
+    }
+
+    pub(crate) fn invalid_after(&self) -> Option<SystemTime> {
+        self.invalid_after
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Represents a cookie used for content access
 pub(crate) struct ContentAccessCookie {

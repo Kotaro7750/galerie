@@ -4,7 +4,10 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use rsa::{Pkcs1v15Sign, RsaPrivateKey};
 use sha1::{Digest, Sha1};
 
-use crate::domain::{Error, content_access::ContentAccessCookie};
+use crate::domain::{
+    Error,
+    content_access::{ContentAccessConfiguration, ContentAccessCookie},
+};
 use crate::port::ContentAccessConfigurator;
 
 const POLICY_COOKIE_NAME: &str = "CloudFront-Policy";
@@ -20,12 +23,12 @@ const COOKIE_NAMES: [&str; 3] = [
 pub(crate) struct NopContentAccessConfigurator;
 
 impl ContentAccessConfigurator for NopContentAccessConfigurator {
-    fn configure(&self) -> Result<Vec<ContentAccessCookie>, Error> {
-        Ok(Vec::new())
+    fn configure(&self) -> Result<ContentAccessConfiguration, Error> {
+        Ok(ContentAccessConfiguration::new(Vec::new(), None))
     }
 
-    fn clear(&self) -> Result<Vec<ContentAccessCookie>, Error> {
-        Ok(Vec::new())
+    fn clear(&self) -> Result<ContentAccessConfiguration, Error> {
+        Ok(ContentAccessConfiguration::new(Vec::new(), None))
     }
 }
 
@@ -60,7 +63,7 @@ impl CloudFrontContentAccessConfigurator {
 }
 
 impl ContentAccessConfigurator for CloudFrontContentAccessConfigurator {
-    fn configure(&self) -> Result<Vec<ContentAccessCookie>, Error> {
+    fn configure(&self) -> Result<ContentAccessConfiguration, Error> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|e| Error::Internal(format!("system clock is before Unix epoch: {e}")))?;
@@ -94,7 +97,7 @@ impl ContentAccessConfigurator for CloudFrontContentAccessConfigurator {
             (KEY_PAIR_ID_COOKIE_NAME, self.key_pair_id.clone()),
         ];
 
-        Ok(values
+        let cookies = values
             .into_iter()
             .map(|(name, value)| {
                 ContentAccessCookie::new(
@@ -104,11 +107,16 @@ impl ContentAccessConfigurator for CloudFrontContentAccessConfigurator {
                     self.cookie_path.clone(),
                 )
             })
-            .collect())
+            .collect();
+
+        Ok(ContentAccessConfiguration::new(
+            cookies,
+            Some(UNIX_EPOCH + std::time::Duration::from_secs(expires_at)),
+        ))
     }
 
-    fn clear(&self) -> Result<Vec<ContentAccessCookie>, Error> {
-        Ok(COOKIE_NAMES
+    fn clear(&self) -> Result<ContentAccessConfiguration, Error> {
+        let cookies = COOKIE_NAMES
             .into_iter()
             .map(|name| {
                 ContentAccessCookie::new(
@@ -118,7 +126,9 @@ impl ContentAccessConfigurator for CloudFrontContentAccessConfigurator {
                     self.cookie_path.clone(),
                 )
             })
-            .collect())
+            .collect();
+
+        Ok(ContentAccessConfiguration::new(cookies, None))
     }
 }
 
@@ -130,10 +140,12 @@ mod tests {
 
     #[test]
     fn default_configurator_does_not_set_cookies() {
-        let cookies = NopContentAccessConfigurator.configure().unwrap();
-        assert!(cookies.is_empty());
-        let cleared_cookies = NopContentAccessConfigurator.clear().unwrap();
-        assert!(cleared_cookies.is_empty());
+        let configuration = NopContentAccessConfigurator.configure().unwrap();
+        assert_eq!(configuration.invalid_after(), None);
+        assert!(configuration.cookies().is_empty());
+        let cleared_configuration = NopContentAccessConfigurator.clear().unwrap();
+        assert_eq!(cleared_configuration.invalid_after(), None);
+        assert!(cleared_configuration.cookies().is_empty());
     }
 
     #[test]
@@ -150,7 +162,24 @@ mod tests {
             "/".to_string(),
         );
 
-        let cookies = configurator.configure().unwrap();
+        let before = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 300;
+        let configuration = configurator.configure().unwrap();
+        let after = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 300;
+        assert!(
+            configuration
+                .invalid_after()
+                .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+                .is_some_and(|value| value.as_secs() >= before && value.as_secs() <= after)
+        );
+        let cookies = configuration.cookies();
         assert_eq!(cookies.len(), 3);
         assert!(cookies.iter().all(|cookie| !cookie.value().is_empty()));
         assert!(
@@ -159,7 +188,9 @@ mod tests {
                 .all(|cookie| cookie.domain() == Some("example.net") && cookie.path() == "/")
         );
 
-        let cleared_cookies = configurator.clear().unwrap();
+        let cleared_configuration = configurator.clear().unwrap();
+        assert_eq!(cleared_configuration.invalid_after(), None);
+        let cleared_cookies = cleared_configuration.cookies();
         assert_eq!(cleared_cookies.len(), 3);
         assert!(
             cleared_cookies

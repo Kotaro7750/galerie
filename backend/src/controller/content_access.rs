@@ -1,11 +1,13 @@
 use axum::extract::State;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::cookie::{Cookie, SameSite};
-use galerie_api::models::InternalServerErrorProblem;
+use galerie_api::models::{
+    ContentAccessConfiguration as ApiContentAccessConfiguration, InternalServerErrorProblem,
+};
 use http::StatusCode;
 use http::header::{CONTENT_TYPE, SET_COOKIE};
 
-use crate::domain::content_access::ContentAccessCookie;
+use crate::domain::content_access::{ContentAccessConfiguration, ContentAccessCookie};
 use crate::usecase::{ClearContentAccessUseCase, ConfigureContentAccessUseCase};
 
 #[derive(Clone)]
@@ -35,21 +37,36 @@ impl ContentAccessController {
     }
 
     async fn configure(State(this): State<Self>) -> Result<Response, ContentAccessControllerError> {
-        let cookies = this.configure_content_access.execute()?;
-        Self::cookie_response(cookies, false)
+        let configuration = this.configure_content_access.execute()?;
+        Self::configuration_response(configuration)
     }
 
     async fn clear(State(this): State<Self>) -> Result<Response, ContentAccessControllerError> {
-        let cookies = this.clear_content_access.execute()?;
-        Self::cookie_response(cookies, true)
+        let configuration = this.clear_content_access.execute()?;
+        Self::cookie_response(
+            configuration.cookies(),
+            true,
+            StatusCode::NO_CONTENT.into_response(),
+        )
+    }
+
+    fn configuration_response(
+        configuration: ContentAccessConfiguration,
+    ) -> Result<Response, ContentAccessControllerError> {
+        let mut body = ApiContentAccessConfiguration::new();
+        body.invalid_after = configuration.invalid_after().map(Into::into);
+        Self::cookie_response(
+            configuration.cookies(),
+            false,
+            axum::Json(body).into_response(),
+        )
     }
 
     fn cookie_response(
         cookies: Vec<ContentAccessCookie>,
         removal: bool,
+        mut response: Response,
     ) -> Result<Response, ContentAccessControllerError> {
-        let mut response = StatusCode::NO_CONTENT.into_response();
-
         for content_access_cookie in cookies {
             let mut cookie = Cookie::build((
                 content_access_cookie.name().to_string(),
