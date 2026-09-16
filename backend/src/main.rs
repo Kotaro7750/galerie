@@ -1,8 +1,9 @@
+use std::net::SocketAddr;
 use std::num::NonZeroU64;
 use std::sync::Arc;
 
 use ::config::Config;
-use axum::Router;
+use axum::{Router, middleware};
 use controller::content::ContentController;
 use controller::content_access::ContentAccessController;
 use usecase::{ClearContentAccessUseCase, ConfigureContentAccessUseCase, GetContentUseCase};
@@ -16,11 +17,14 @@ mod config;
 mod controller;
 mod domain;
 mod infrastructure;
+mod observability;
 mod port;
 mod usecase;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    observability::init_logging();
+
     let config = Config::builder()
         .add_source(
             ::config::Environment::with_prefix("GALERIE")
@@ -63,9 +67,15 @@ async fn main() -> anyhow::Result<()> {
     let api_v0_router = Router::new()
         .nest("/contents", contents_controller.router())
         .nest("/content-access", content_access_controller.router());
-    let app = Router::new().nest("/api/v0", api_v0_router);
+    let app = Router::new()
+        .nest("/api/v0", api_v0_router)
+        .layer(middleware::from_fn(observability::access_log));
 
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind(config.listen_address()).await?;
-    Ok(axum::serve(listener, app).await?)
+    Ok(axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?)
 }

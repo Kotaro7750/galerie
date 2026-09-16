@@ -740,7 +740,7 @@ dependencies = [
 
 [[package]]
 name = "backend"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -766,6 +766,8 @@ dependencies = [
  "sha1 0.10.7",
  "thiserror",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "unicode-normalization",
  "unicode-xid",
  "url",
