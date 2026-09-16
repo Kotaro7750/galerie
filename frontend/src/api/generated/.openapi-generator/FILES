@@ -1,8 +1,10 @@
+apis/ContentAccessApi.ts
 apis/ContentsApi.ts
 apis/index.ts
 index.ts
 models/BadRequestProblem.ts
 models/Content.ts
+models/ContentAccessConfiguration.ts
 models/ContentNotFoundProblem.ts
 models/ContentPage.ts
 models/IntegerSetTag.ts

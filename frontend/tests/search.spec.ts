@@ -1,4 +1,7 @@
 import { expect, test } from '@playwright/test';
+import { mockContentAccess } from './content_access';
+
+test.beforeEach(async ({ page }) => { await mockContentAccess(page); });
 
 test('draft terms only run on search, with JSON conditions and matching cursors', async ({ page }) => {
   const requests: URL[] = [];

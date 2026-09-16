@@ -2,6 +2,7 @@
 /* eslint-disable */
 export * from './BadRequestProblem';
 export * from './Content';
+export * from './ContentAccessConfiguration';
 export * from './ContentNotFoundProblem';
 export * from './ContentPage';
 export * from './IntegerSetTag';

@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { mockContentAccess } from './content_access';
+
+test.beforeEach(async ({ page }) => { await mockContentAccess(page); });
 
 const id = '00065786-f916-4e2c-85bc-3db5e4c0cb71';
 const content = (index: number) => ({
@@ -18,8 +21,11 @@ async function mockImages(page: Page) {
 }
 
 test('home introduces the gallery without fetching content', async ({ page }) => {
-  let requested = false;
-  page.on('request', (request) => { if (new URL(request.url()).pathname.startsWith('/api/')) requested = true; });
+  const requestedPaths: string[] = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith('/api/')) requestedPaths.push(path);
+  });
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Galerie');
   const galleryLink = page.getByRole('link', { name: 'ギャラリーを開く' });
@@ -27,7 +33,7 @@ test('home introduces the gallery without fetching content', async ({ page }) =>
   await expect(galleryLink).toHaveClass(/btn-circle.*btn-primary/);
   await expect(galleryLink.locator('svg')).toHaveClass(/lucide-images/);
   await expect(page.locator('.divider')).toHaveText('OR');
-  expect(requested).toBe(false);
+  expect(requestedPaths).toEqual(['/api/v0/content-access']);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/home-${test.info().project.name}.png`, fullPage: true });
 });

@@ -1,7 +1,7 @@
 {
   "name": "galerie-frontend",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -28,6 +28,7 @@
     "@types/node": "^24.0.0",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^6.0.0",
     "daisyui": "^5.0.0",
     "tailwindcss": "^4.0.0",
