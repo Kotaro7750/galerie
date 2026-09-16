@@ -1,0 +1,5 @@
+# This file instructs Redocly's linter to ignore rules at specific locations.
+openapi.yaml:
+  operation-4xx-response:
+    - '#/paths/~1content-access/post/responses'
+    - '#/paths/~1content-access/delete/responses'

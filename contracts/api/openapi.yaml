@@ -2,14 +2,14 @@ openapi: 3.1.0
 
 info:
   title: Galerie API
-  version: 0.4.0
+  version: 0.5.0
   license:
     name: MIT License
     identifier: MIT
   description: |
     本APIは、Galerieアプリケーションが画像やPDF化した漫画等のマルチメディアを提供するためのAPIである。
 
-    なお、このAPI自体はコンテンツそのものの配信を行うことを想定しておらず、このAPIを利用してコンテンツのメタデータを取得し、その中に含まれる情報を使ってコンテンツを取得することを想定している。
+    なお、このAPI自体はコンテンツそのものの配信を行わない。クライアントは本APIからコンテンツのメタデータを取得し、その中に含まれる情報を使ってコンテンツを取得する。
 
 servers:
   - url: /api/v0
@@ -18,10 +18,44 @@ servers:
 tags:
   - name: Contents
     description: コンテンツファイルに関するAPI
+  - name: ContentAccess
+    description: コンテンツ配信エンドポイントへのアクセス設定に関するAPI
 
 security: []
 
 paths:
+  /content-access:
+    post:
+      operationId: configureContentAccess
+      tags:
+        - ContentAccess
+      summary: コンテンツアクセスの設定
+      description: |
+        コンテンツ配信エンドポイントへアクセスするために必要な認可情報をクライアントに設定する。
+
+        認可情報が必要な構成では、レスポンスの`Set-Cookie`ヘッダーによって設定する。
+        Cookieの具体的な内容は実装の詳細であり、クライアントは解釈または直接操作してはならない。
+      responses:
+        "204":
+          description: コンテンツアクセスに必要な設定が完了した
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    delete:
+      operationId: clearContentAccess
+      tags:
+        - ContentAccess
+      summary: コンテンツアクセス設定の解除
+      description: |
+        コンテンツ配信エンドポイントへアクセスするために設定された認可情報をクライアントから削除する。
+
+        認可情報が設定される構成では、レスポンスの`Set-Cookie`ヘッダーによって削除する。
+        Cookieの具体的な内容は実装の詳細であり、クライアントは解釈または直接操作してはならない。
+      responses:
+        "204":
+          description: コンテンツアクセス設定の解除が完了した
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /contents:
     get:
       operationId: listContents
@@ -613,7 +647,7 @@ components:
 
   responses:
     BadRequest:
-      description: リクエストパラメーターが不正、またはカーソルが無効である
+      description: リクエストパラメーターが不正である
       content:
         application/problem+json:
           schema:
