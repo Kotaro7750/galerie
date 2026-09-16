@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 use std::num::NonZeroU64;
 use std::sync::Arc;
+use tokio::signal;
 
 use ::config::Config;
 use axum::{Router, middleware};
@@ -69,13 +70,45 @@ async fn main() -> anyhow::Result<()> {
         .nest("/content-access", content_access_controller.router());
     let app = Router::new()
         .nest("/api/v0", api_v0_router)
-        .layer(middleware::from_fn(observability::access_log));
+        .layer(middleware::from_fn(observability::access_log))
+        .route("/health", axum::routing::get(|| async { "OK" }));
 
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind(config.listen_address()).await?;
-    Ok(axum::serve(
+    tracing::info!("Server is running on {}", listener.local_addr()?);
+    axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .await?)
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
+
+    tracing::info!("Server has been shut down gracefully.");
+    Ok(())
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("Signal received, starting graceful shutdown...");
 }
