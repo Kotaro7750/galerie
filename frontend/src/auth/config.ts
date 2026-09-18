@@ -7,7 +7,9 @@ function required(name: string, value: string | undefined) {
   return value;
 }
 
-const appUrl = `${window.location.origin}${window.location.pathname}`;
+// Use the SPA deployment root, not the route at which authentication starts.
+// This URL must be registered with the identity provider.
+const appUrl = new URL(import.meta.env.BASE_URL, window.location.origin).href;
 const authority = authEnabled
   ? required('VITE_AUTH_AUTHORITY', import.meta.env.VITE_AUTH_AUTHORITY)
   : undefined;
@@ -15,12 +17,12 @@ const clientId = authEnabled
   ? required('VITE_AUTH_CLIENT_ID', import.meta.env.VITE_AUTH_CLIENT_ID)
   : undefined;
 const resource = import.meta.env.VITE_AUTH_RESOURCE || window.location.origin;
-const postLogoutRedirectUri = import.meta.env.VITE_AUTH_POST_LOGOUT_REDIRECT_URI || appUrl;
+const postLogoutRedirectUri = appUrl;
 
 export const userManager = authEnabled ? new UserManager({
   authority: authority!,
   client_id: clientId!,
-  redirect_uri: import.meta.env.VITE_AUTH_REDIRECT_URI || appUrl,
+  redirect_uri: appUrl,
   post_logout_redirect_uri: postLogoutRedirectUri,
   response_type: 'code',
   scope: import.meta.env.VITE_AUTH_SCOPE || 'openid',

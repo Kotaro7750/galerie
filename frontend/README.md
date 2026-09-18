@@ -49,5 +49,4 @@ When enabled, the following environment variables configure the Authorization Co
 | `VITE_AUTH_CLIENT_ID` | Yes | - | Public client ID. |
 | `VITE_AUTH_RESOURCE` | No | SPA origin | OAuth 2.0 Resource Indicator (RFC 8707). |
 | `VITE_AUTH_SCOPE` | No | `openid` | OAuth 2.0 scopes requested during authorization. |
-| `VITE_AUTH_REDIRECT_URI` | No | URL serving the SPA | Redirect URL used after authorization completes. |
-| `VITE_AUTH_POST_LOGOUT_REDIRECT_URI` | No | URL serving the SPA | Redirect URL used after logout completes. |
+

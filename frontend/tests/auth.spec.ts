@@ -22,6 +22,7 @@ test('a protected route starts the OAuth authorization code flow', async ({ page
   expect(url.searchParams.get('client_id')).toBe('galerie');
   expect(url.searchParams.get('code_challenge_method')).toBe('S256');
   expect(url.searchParams.get('resource')).toBe('https://127.0.0.1:4174');
+  expect(url.searchParams.get('redirect_uri')).toBe('https://127.0.0.1:4174/');
 });
 
 test('an authenticated API request includes the bearer access token', async ({ page }) => {
