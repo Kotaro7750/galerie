@@ -1,6 +1,6 @@
 # Galerie frontend
-
-## 起動
+## Commands
+### Start
 
 ```sh
 cd frontend
@@ -9,59 +9,45 @@ mise run install
 mise run dev
 ```
 
-Node.js 24 と npm を直接使用する場合は `npm ci`、`npm run dev` でも起動できる。
-開発サーバーの URL は起動時の出力を確認する。
-
-バックエンドを `http://localhost:3000` で起動すると、開発サーバーが `/api` を転送する。
-接続先を変更する場合は `.env.example` を `.env.local` にコピーして編集する。
-画像は API が返す `thumbnailUrl` / `contentUrl` から直接取得するため、コンテンツ配信サーバーも別途起動する。
-
-## 確認とビルド
+### Verify and Build
 
 ```sh
 npm run build
 npx playwright install chromium
+# Verifies navigation, infinite scrolling, and error recovery with a mocked API.
 npm test
+# Verifies protected routes, PKCE, and Bearer tokens in an authenticated build.
 npm run test:auth
 npm run preview
 ```
 
-`npm run build` は型検査と本番ビルドを実施する。配信対象は `dist/`。
-`npm test` は API をモックし、実際のサンプル AVIF を使ってデスクトップ・モバイルの画面遷移、無限スクロール、エラー回復を確認する。
-`npm run test:auth`はテスト用の認証付きビルドを起動し、保護ルート、Authorization Code Flow with PKCE及びAPIのBearerトークンを確認する。
-
-静的ホスティングでは `/#/`、`/#/contents`、`/#/contents/:contentId` を使うため、SPA 用のパス書き換えは不要。
-本番環境では同一オリジンの `/api/v0` にバックエンドを配置するか、ビルド時に `VITE_API_BASE_URL` を指定する。
-別オリジンの場合、API サーバー側でフロントエンドのオリジンを許可する CORS 設定が必要。
-開発用プロキシは `dist/` や `npm run preview` には含まれない。
-
-## API クライアントの再生成
-
-リポジトリルートの mise で定義された Java と OpenAPI Generator CLI をインストールしたうえで実行する。
+### Regenerate the API Client
 
 ```sh
 npm run api:generate
 npm run build
 ```
 
-契約は `../contracts/api/openapi.yaml`、出力先は `src/api/generated/`。
-生成コードは手動編集せず、契約の変更後に再生成する。Generator は `openapitools.json` で 7.24.0 に固定している。
+## Environment Variables
+### Common
 
-## 認証付きビルド
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `VITE_API_BASE_URL` | No | `/api/v0` | Base URL used by the API client. A trailing `/` is removed. |
+| `VITE_AUTH_ENABLED` | No | `false` | Enables OAuth 2.0 / OpenID Connect authorization when set to `true`. |
 
-ローカル開発と通常のビルドは既定で認証なし。認証付きにする場合は`.env.example`を参照し、少なくとも次をビルド時に設定する。
+To override values for local development, copy `.env.example` to `.env.local` and edit it.
 
-```sh
-VITE_AUTH_ENABLED=true
-VITE_AUTH_AUTHORITY=https://id.example.com
-VITE_AUTH_CLIENT_ID=galerie
-npm run build
-```
+### OAuth 2.0 Authorization
 
-`VITE_AUTH_RESOURCE` は任意のOAuth 2.0 Resource Indicator (RFC 8707) である。未指定時はアクセス中のSPAオリジンを使用する。バックエンドの `GALERIE_AUTHORIZATION__AUDIENCE` には、この既定値または明示指定値と同じ値を設定する。CognitoではURL形式の値を認可リクエストの `resource` として送信し、発行されるアクセストークンの `aud` claim に設定する。
-認証プロバイダーにはSPAのURLをリダイレクトURL及びログアウト後URLとして登録し、Authorization Code Flow、PKCE及び必要なscopeを有効にする。
-認証付きビルドではコンテンツ一覧・コンテンツページが保護され、バックエンドAPIリクエストにアクセストークンをBearerトークンとして付与する。
-`contentUrl`と`thumbnailUrl`への画像リクエストにはBearerトークンを付与しないため、必要な場合はコンテンツ配信側で期限付きURL等を使用する。
+OAuth 2.0 authorization is disabled by default.
+When enabled, the following environment variables configure the Authorization Code Flow with PKCE and OpenID Connect.
 
-Amazon Cognitoでは`VITE_AUTH_POST_LOGOUT_REDIRECT_URI`の値を、アプリケーションクライアントの「許可されているサインアウトURL」に完全一致で登録する。
-実装はCognitoのissuerを検出し、ログアウト時に同じ値を`logout_uri`として送信する。
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `VITE_AUTH_AUTHORITY` | Yes | - | OIDC issuer URL. |
+| `VITE_AUTH_CLIENT_ID` | Yes | - | Public client ID. |
+| `VITE_AUTH_RESOURCE` | No | SPA origin | OAuth 2.0 Resource Indicator (RFC 8707). |
+| `VITE_AUTH_SCOPE` | No | `openid` | OAuth 2.0 scopes requested during authorization. |
+| `VITE_AUTH_REDIRECT_URI` | No | URL serving the SPA | Redirect URL used after authorization completes. |
+| `VITE_AUTH_POST_LOGOUT_REDIRECT_URI` | No | URL serving the SPA | Redirect URL used after logout completes. |
