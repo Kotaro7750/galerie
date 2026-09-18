@@ -9,6 +9,19 @@ The container image defines the following environment variables.
 | `GALERIE_LISTEN_ADDRESS` | Yes | `0.0.0.0` | Address on which the API server listens. |
 | `GALERIE_LISTEN_PORT` | Yes | `3000` | Port on which the API server listens. |
 
+## OAuth 2.0 Authorization
+
+OAuth 2.0 authorization is disabled by default. 
+
+When enabled, every endpoints without `/health` require an OAuth 2.0 Bearer access token.
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `GALERIE_AUTHORIZATION__ENABLED` | No | `false` | Enables OAuth 2.0 access-token authorization. |
+| `GALERIE_AUTHORIZATION__ISSUER` | Yes | - | Required issuer (`iss`) of access tokens when authorization is enabled. |
+| `GALERIE_AUTHORIZATION__AUDIENCE` | Yes | - | Required access-token audience when authorization is enabled. |
+| `GALERIE_AUTHORIZATION__JWKS_URL` | Yes | - | HTTPS URL from which signing keys are retrieved and refreshed hourly when authorization is enabled. For Cognito, use the User Pool JWKS URL. |
+
 ## Content Storage
 
 Content storage has no image default. Set `GALERIE_CONTENT_STORAGE__MODE` and the variables required for its selected variant.

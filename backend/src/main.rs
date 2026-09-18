@@ -65,9 +65,14 @@ async fn main() -> anyhow::Result<()> {
         ConfigureContentAccessUseCase::new(content_access_configurator.clone()),
         ClearContentAccessUseCase::new(content_access_configurator),
     );
+
     let api_v0_router = Router::new()
         .nest("/contents", contents_controller.router())
         .nest("/content-access", content_access_controller.router());
+    let api_v0_router = match config.authorization().construct_auth_layer().await? {
+        Some(auth_layer) => api_v0_router.layer(auth_layer),
+        None => api_v0_router,
+    };
     let app = Router::new()
         .nest("/api/v0", api_v0_router)
         .layer(middleware::from_fn(observability::access_log))

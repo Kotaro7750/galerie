@@ -2,9 +2,11 @@ use serde::Deserialize;
 use std::net::IpAddr;
 use thiserror::Error;
 
+use authorization::AuthorizationConfig;
 use content_access::ContentAccessConfig;
 use content_storage::ContentStorageConfig;
 
+pub(crate) mod authorization;
 mod content_access;
 mod content_storage;
 
@@ -17,6 +19,8 @@ pub(crate) enum ConfigError {
     ContentStorageConstruction(String),
     #[error("constructing content access configurator: {0}")]
     ContentAccessConstruction(String),
+    #[error("constructing authorization: {0}")]
+    AuthorizationConstruction(String),
 }
 
 // Optionとserdeのデフォルト関数の使い分けは以下の考えに基づいて行う
@@ -32,6 +36,8 @@ pub(crate) struct GalerieConfig {
     listen_address: String,
     #[serde(default)]
     content_access: ContentAccessConfig,
+    #[serde(default)]
+    authorization: AuthorizationConfig,
     content_storage: ContentStorageConfig,
 }
 
@@ -52,6 +58,10 @@ impl GalerieConfig {
         &self.content_access
     }
 
+    pub(crate) fn authorization(&self) -> &AuthorizationConfig {
+        &self.authorization
+    }
+
     pub(crate) async fn validate(&self) -> Result<(), ConfigError> {
         self.listen_address.parse::<IpAddr>().map_err(|e| {
             ConfigError::InvalidConfig(format!(
@@ -59,6 +69,7 @@ impl GalerieConfig {
                 self.listen_address, e
             ))
         })?;
+        self.authorization.validate()?;
         self.content_access.validate()?;
         self.content_storage.validate().await
     }
