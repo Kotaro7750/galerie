@@ -14,6 +14,7 @@ const authority = authEnabled
 const clientId = authEnabled
   ? required('VITE_AUTH_CLIENT_ID', import.meta.env.VITE_AUTH_CLIENT_ID)
   : undefined;
+const resource = import.meta.env.VITE_AUTH_RESOURCE || window.location.origin;
 const postLogoutRedirectUri = import.meta.env.VITE_AUTH_POST_LOGOUT_REDIRECT_URI || appUrl;
 
 export const userManager = authEnabled ? new UserManager({
@@ -23,6 +24,7 @@ export const userManager = authEnabled ? new UserManager({
   post_logout_redirect_uri: postLogoutRedirectUri,
   response_type: 'code',
   scope: import.meta.env.VITE_AUTH_SCOPE || 'openid',
+  resource,
   automaticSilentRenew: true,
 }) : undefined;
 

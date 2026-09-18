@@ -58,6 +58,7 @@ VITE_AUTH_CLIENT_ID=galerie
 npm run build
 ```
 
+`VITE_AUTH_RESOURCE` は任意のOAuth 2.0 Resource Indicator (RFC 8707) である。未指定時はアクセス中のSPAオリジンを使用する。バックエンドの `GALERIE_AUTHORIZATION__AUDIENCE` には、この既定値または明示指定値と同じ値を設定する。CognitoではURL形式の値を認可リクエストの `resource` として送信し、発行されるアクセストークンの `aud` claim に設定する。
 認証プロバイダーにはSPAのURLをリダイレクトURL及びログアウト後URLとして登録し、Authorization Code Flow、PKCE及び必要なscopeを有効にする。
 認証付きビルドではコンテンツ一覧・コンテンツページが保護され、バックエンドAPIリクエストにアクセストークンをBearerトークンとして付与する。
 `contentUrl`と`thumbnailUrl`への画像リクエストにはBearerトークンを付与しないため、必要な場合はコンテンツ配信側で期限付きURL等を使用する。

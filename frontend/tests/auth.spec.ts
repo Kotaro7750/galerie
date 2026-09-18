@@ -21,6 +21,7 @@ test('a protected route starts the OAuth authorization code flow', async ({ page
   expect(url.searchParams.get('response_type')).toBe('code');
   expect(url.searchParams.get('client_id')).toBe('galerie');
   expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+  expect(url.searchParams.get('resource')).toBe('https://127.0.0.1:4174');
 });
 
 test('an authenticated API request includes the bearer access token', async ({ page }) => {
@@ -72,7 +73,7 @@ test('Cognito logout includes its required client and logout URI', async ({ page
   expect(clear.headers().authorization).toBe('Bearer test-access-token');
   const url = new URL((await logoutRequest).url());
   expect(url.searchParams.get('client_id')).toBe('galerie');
-  expect(url.searchParams.get('logout_uri')).toBe('http://127.0.0.1:4174/');
+  expect(url.searchParams.get('logout_uri')).toBe('https://127.0.0.1:4174/');
 });
 
 test('content access is refreshed before invalidAfter', async ({ page }) => {
