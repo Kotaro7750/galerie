@@ -7,6 +7,11 @@ use ::config::Config;
 use axum::{Router, middleware};
 use controller::content::ContentController;
 use controller::content_access::ContentAccessController;
+use http::{
+    HeaderValue, Method,
+    header::{AUTHORIZATION, CONTENT_TYPE},
+};
+use tower_http::cors::CorsLayer;
 use usecase::{ClearContentAccessUseCase, ConfigureContentAccessUseCase, GetContentUseCase};
 
 use crate::config::GalerieConfig;
@@ -77,6 +82,16 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/v0", api_v0_router)
         .layer(middleware::from_fn(observability::access_log))
         .route("/health", axum::routing::get(|| async { "OK" }));
+    let app = if let Some(cors_origin) = config.cors_origin() {
+        app.layer(
+            CorsLayer::new()
+                .allow_origin(cors_origin.parse::<HeaderValue>()?)
+                .allow_methods([Method::GET, Method::POST, Method::DELETE])
+                .allow_headers([AUTHORIZATION, CONTENT_TYPE]),
+        )
+    } else {
+        app
+    };
 
     // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind(config.listen_address()).await?;

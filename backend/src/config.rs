@@ -38,6 +38,7 @@ pub(crate) struct GalerieConfig {
     content_access: ContentAccessConfig,
     #[serde(default)]
     authorization: AuthorizationConfig,
+    cors_origin: Option<String>,
     content_storage: ContentStorageConfig,
 }
 
@@ -60,6 +61,10 @@ impl GalerieConfig {
 
     pub(crate) fn authorization(&self) -> &AuthorizationConfig {
         &self.authorization
+    }
+
+    pub(crate) fn cors_origin(&self) -> Option<&str> {
+        self.cors_origin.as_deref()
     }
 
     pub(crate) async fn validate(&self) -> Result<(), ConfigError> {

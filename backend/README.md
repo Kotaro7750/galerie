@@ -9,6 +9,14 @@ The container image defines the following environment variables.
 | `GALERIE_LISTEN_ADDRESS` | Yes | `0.0.0.0` | Address on which the API server listens. |
 | `GALERIE_LISTEN_PORT` | Yes | `3000` | Port on which the API server listens. |
 
+## Cross-Origin Resource Sharing
+
+CORS is disabled unless an allowed origin is configured. 
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `GALERIE_CORS_ORIGIN` | No | - | Exact origin allowed to read API responses from a browser, such as `https://app.example.com`. |
+
 ## OAuth 2.0 Authorization
 
 OAuth 2.0 authorization is disabled by default. 
