@@ -11,7 +11,6 @@ export class ApiError extends Error {
 
 const apiConfiguration = new Configuration({
   basePath: (import.meta.env.VITE_API_BASE_URL || '/api/v0').replace(/\/$/, ''),
-  credentials: 'include',
   middleware: authEnabled ? [{
     pre: async ({ url, init }) => {
       const token = await getAccessToken();
