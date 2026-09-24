@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Galerie API
-  version: 0.5.1
+  version: 0.6.0
   license:
     name: MIT License
     identifier: MIT
@@ -87,6 +87,7 @@ paths:
 
         対応するメタデータを読み取れないコンテンツは一覧対象から除外する。
         `limit`・`nextCursor`及び最終ページの判定は、読み取り不能なコンテンツの除外と検索条件による絞り込み後の一覧に対して作用する。
+        ただし、スキーマ違反となるコンテンツであっても、対応するメタデータが読み取れる場合には一覧対象に含める。
 
         各ページはリクエスト時点のコンテンツを対象とするため、一連の呼び出し中にコンテンツが追加・削除された場合やメタデータの変更によって取得可能性や検索条件への一致が変わった場合、後続のリクエストはその更新の内容を反映する。
         その結果、カーソル以前の位置に追加されたコンテンツやカーソル以降の位置で削除されたコンテンツは以降のリクエストには含まれない。
@@ -96,7 +97,10 @@ paths:
         `nextCursor`がある場合、`items`には1件以上のコンテンツが含まれる。
 
         検索条件は複数の項のAND条件として扱われ、正しくURLエンコードされたJSON配列として指定された場合のみ有効となり、無効な場合エラーとなる。
-        この基準を満たす場合であれば、JSON文字列の空白・プロパティ順や配列の順番は問わず同一の検索条件として扱割れる。
+        タグに関する検索条件の値は文字列で指定し、タグスキーマに定義がある場合はその定義に従って解釈する。
+        定義がない場合は、タグスキーマがそのキーを許容する場合に限りTextとして解釈する。この際値の字句からIntegerやRealを推測しない。
+        タグのキーや値がフォーマットまたはタグスキーマに違反する項が1つでもある場合はエラーとなる。
+        この基準を満たす場合であれば、JSON文字列の空白・プロパティ順や配列の順番は問わず同一の検索条件として扱われる。
 
         検索を行う際、ページをまたぐ後続のリクエストは初回リクエスト時と同一の検索条件を指定する必要がある。
         初回とは異なる検索条件を指定した場合、正しい結果は保証されない。
@@ -106,17 +110,17 @@ paths:
         ##### 検索リクエストの例
         ```sh
         curl --get 'http://localhost:8000/api/v0/contents' \
-          --data-urlencode 'condition=[{"kind":"tagMatch","key":"category","values":["landscape","portrait"]},{"kind":"tagMatch","key":"authors","values":["Alice"]}]' \
+          --data-urlencode 'condition=[{"kind":"tagMatch","key":"category","values":["landscape","portrait"]},{"kind":"tagMatch","key":"rating","values":["5"]}]' \
           --data-urlencode 'limit=30'
         ```
 
-        上記の例では、`category`が`landscape`または`portrait`で、`authors`に`Alice`を含むコンテンツを検索する。
+        上記の例では、`category`が`landscape`または`portrait`で、タグスキーマでIntegerと定義された`rating`が整数の`5`であるコンテンツを検索する。
 
       x-codeSamples:
         - lang: curl
           source: |
             curl --get 'http://localhost:8000/api/v0/contents' \
-              --data-urlencode 'condition=[{"kind":"tagMatch","key":"category","values":["landscape","portrait"]},{"kind":"tagMatch","key":"authors","values":["Alice"]}]' \
+              --data-urlencode 'condition=[{"kind":"tagMatch","key":"category","values":["landscape","portrait"]},{"kind":"tagMatch","key":"rating","values":["5"]}]' \
               --data-urlencode 'limit=30'
       parameters:
         - $ref: "#/components/parameters/Cursor"
@@ -159,13 +163,18 @@ paths:
                           - key: weights
                             type: realSet
                             values: [0.5, 1.5]
-                        invalidTags:
+                        diagnostics:
                           - key: Invalid-Key
-                            reason: INVALID_KEY
+                            kind: invalidKey
                           - key: OrderedArray
-                            reason: UNSUPPORTED_VALUE_TYPE
+                            kind: unsupportedXmpValueType
                           - key: EmptyStringSet
-                            reason: INVALID_VALUE
+                            kind: unparseableTagValue
+                          - key: title
+                            kind: missingRequiredTag
+                            definition:
+                              key: title
+                              type: text
                     nextCursor: eyJhZnRlciI6IjJmMWM3NWZjIn0
                 lastPage:
                   summary: 最終ページ
@@ -176,7 +185,7 @@ paths:
                         contentUrl: https://content.example.com/7b0b8b8e-3c3d-4c12-9a4a-75e60d5c9e31.avif
                         thumbnailUrl: https://content.example.com/7b0b8b8e-3c3d-4c12-9a4a-75e60d5c9e31.avif
                         tags: []
-                        invalidTags: []
+                        diagnostics: []
                 emptyPage:
                   summary: コンテンツが存在しないもしくは検索結果が0件
                   value:
@@ -231,13 +240,18 @@ paths:
                   - key: weights
                     type: realSet
                     values: [0.5, 1.5]
-                invalidTags:
+                diagnostics:
                   - key: Invalid-Key
-                    reason: INVALID_KEY
+                    kind: invalidKey
                   - key: OrderedArray
-                    reason: UNSUPPORTED_VALUE_TYPE
+                    kind: unsupportedXmpValueType
                   - key: EmptyStringSet
-                    reason: INVALID_VALUE
+                    kind: unparseableTagValue
+                  - key: title
+                    kind: missingRequiredTag
+                    definition:
+                      key: title
+                      type: text
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -313,6 +327,16 @@ components:
         - $ref: "#/components/schemas/MediaTypeMatchTerm"
         - $ref: "#/components/schemas/TagExistsTerm"
         - $ref: "#/components/schemas/TagMatchTerm"
+      discriminator:
+        propertyName: kind
+        mapping:
+          mediaTypeMatch: "#/components/schemas/MediaTypeMatchTerm"
+          tagExists: "#/components/schemas/TagExistsTerm"
+          tagMatch: "#/components/schemas/TagMatchTerm"
+
+    MediaTypeMatchKind:
+      type: string
+      const: mediaTypeMatch
 
     MediaTypeMatchTerm:
       type: object
@@ -328,9 +352,16 @@ components:
           items:
             $ref: "#/components/schemas/MediaType"
 
+    TagExistsKind:
+      type: string
+      const: tagExists
+
     TagExistsTerm:
       type: object
-      description: 指定した名前の有効なタグが型を問わず存在する場合に一致する。キーのみのタグも対象とするがinvalidTagsは対象外。
+      description: |
+        指定した名前を持つ、有効なフォーマットかつタグスキーマに整合したタグが型を問わず存在する場合に一致する。
+        keyのみのタグも対象とするが無効なフォーマットやスキーマ違反のタグへは判定を行わない。
+        指定したkeyが無効なフォーマットであったりタグスキーマ違反であった場合にはエラーとなる。
       additionalProperties: false
       required: [kind, key]
       properties:
@@ -339,12 +370,19 @@ components:
         key:
           $ref: "#/components/schemas/TagKey"
 
+    TagMatchKind:
+      type: string
+      const: tagMatch
+
     TagMatchTerm:
       type: object
       description: |
-        指定したキーを持つタグの値が、指定値のいずれかと一致する場合に一致する。
-        タグが集合型の場合には、いずれかの要素が指定値のいずれかと一致すれば一致する。
-        有効な文字列型・文字列集合型のタグが存在しない場合は不一致とする。
+        指定したkeyを持つタグの値が、指定値のいずれかと一致する場合に一致する。
+        指定値は文字列で受け取り、そのkeyにタグスキーマの定義があれば定義された型と制約に従って解釈する。
+        定義がなければ、keyが許容される場合にTextとして解釈する。値の字句からIntegerやRealを推測しない。
+        セット型では定義された要素型で解釈し、いずれかの要素が指定値のいずれかと一致すれば一致する。
+        タグが存在しない場合や、定義のないkeyのみのタグに対しては一致しない。
+        keyのみと定義されたタグへの値一致、フォーマットが無効なkeyや値、タグスキーマに違反するkeyや値を指定した場合にはエラーとなる。
       additionalProperties: false
       required: [kind, key, values]
       properties:
@@ -355,20 +393,10 @@ components:
         values:
           type: array
           minItems: 1
+          description: 各値をタグスキーマの定義またはTextのフォールバックに従って解釈する。空文字列は指定できない。
           items:
-            $ref: "#/components/schemas/TextTagValue"
-
-    MediaTypeMatchKind:
-      type: string
-      enum: [mediaTypeMatch]
-
-    TagExistsKind:
-      type: string
-      enum: [tagExists]
-
-    TagMatchKind:
-      type: string
-      enum: [tagMatch]
+            type: string
+            minLength: 1
 
     ContentId:
       type: string
@@ -392,7 +420,7 @@ components:
         - contentUrl
         - thumbnailUrl
         - tags
-        - invalidTags
+        - diagnostics
       properties:
         id:
           $ref: "#/components/schemas/ContentId"
@@ -411,15 +439,31 @@ components:
         tags:
           type: array
           description: |
-            有効なタグ。該当するタグがなければ空配列を返す。
+            有効なフォーマットかつスキーマが存在する場合にはスキーマと整合するタグ。
+            該当するタグがなければ空配列を返す。
             同一コンテンツ内のタグのkeyは一意とし、値や型が異なる場合も同じkeyを持つタグの重複は認めない。
           items:
             $ref: "#/components/schemas/Tag"
-        invalidTags:
+        diagnostics:
           type: array
-          description: 無効なタグ。無効となった簡単な理由を含む。該当するタグがなければ空配列を返す
+          description: |
+            コンテンツのメタデータに関する診断情報。異常がない場合は空配列を返す。
+            単一タグに関する異常は同じkeyにつき最大1件とする。
+            異常のあるタグはtagsに含めず、タグ検索の対象にも含めない。
+
+            診断の種類（`kind`）:
+            - `invalidKey`: XMPプロパティ名がタグキーの条件を満たさない
+            - `duplicateKey`: 同じタグキーのXMPプロパティが複数存在する
+            - `unsupportedXmpValueType`: XMPの値がタグとして対応しない形式である
+            - `notAllowedTagKey`: タグキーがタグスキーマ上許容されない
+            - `unparseableTagValue`: XMPの値をスキーマ定義またはフォールバックの型として解釈できない
+            - `duplicateSetValue`: セットの要素値を解釈した結果、同じ値が複数存在する
+            - `notAllowedTagValue`: 解釈したタグの値がスキーマの制約を満たさない
+            - `missingRequiredTag`: 有効なタグの中に必須タグが存在しない
+
+            `definition`フィールドを含む場合、タグスキーマに記載されたタグ定義を示す。
           items:
-            $ref: "#/components/schemas/InvalidTag"
+            $ref: "#/components/schemas/ContentDiagnostic"
 
     TagKey:
       type: string
@@ -434,7 +478,8 @@ components:
     TextTagValue:
       type: string
       minLength: 1
-      description: 長さが1以上の有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFCで正規化済みの値
+      maxLength: 255
+      description: 長さが1以上255以下の有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFCで正規化済みの値。長さはUnicodeコードポイント数で数える
       example: landscape
 
     IntegerTagValue:
@@ -462,18 +507,87 @@ components:
         - $ref: "#/components/schemas/TextSetTag"
         - $ref: "#/components/schemas/IntegerSetTag"
         - $ref: "#/components/schemas/RealSetTag"
+      discriminator:
+        propertyName: type
+        mapping:
+          keyOnly: "#/components/schemas/KeyOnlyTag"
+          text: "#/components/schemas/TextTag"
+          integer: "#/components/schemas/IntegerTag"
+          real: "#/components/schemas/RealTag"
+          textSet: "#/components/schemas/TextSetTag"
+          integerSet: "#/components/schemas/IntegerSetTag"
+          realSet: "#/components/schemas/RealSetTag"
+
+    KeyOnlyTagType:
+      type: string
+      const: keyOnly
+
+    TextTagType:
+      type: string
+      const: text
+
+    IntegerTagType:
+      type: string
+      const: integer
+
+    RealTagType:
+      type: string
+      const: real
+
+    TextSetTagType:
+      type: string
+      const: textSet
+
+    IntegerSetTagType:
+      type: string
+      const: integerSet
+
+    RealSetTagType:
+      type: string
+      const: realSet
+
+    InvalidKeyDiagnosticKind:
+      type: string
+      const: invalidKey
+
+    DuplicateKeyDiagnosticKind:
+      type: string
+      const: duplicateKey
+
+    UnsupportedXmpValueTypeDiagnosticKind:
+      type: string
+      const: unsupportedXmpValueType
+
+    NotAllowedTagKeyDiagnosticKind:
+      type: string
+      const: notAllowedTagKey
+
+    UnparseableTagValueDiagnosticKind:
+      type: string
+      const: unparseableTagValue
+
+    DuplicateSetValueDiagnosticKind:
+      type: string
+      const: duplicateSetValue
+
+    NotAllowedTagValueDiagnosticKind:
+      type: string
+      const: notAllowedTagValue
+
+    MissingRequiredTagDiagnosticKind:
+      type: string
+      const: missingRequiredTag
 
     KeyOnlyTag:
       type: object
-      description: キーのみのタグ
+      description: keyのみのタグ
       additionalProperties: false
       required: [key, type]
       properties:
         key:
           $ref: "#/components/schemas/TagKey"
         type:
-          type: string
-          const: keyOnly
+          $ref: "#/components/schemas/KeyOnlyTagType"
 
     TextTag:
       type: object
@@ -484,8 +598,7 @@ components:
         key:
           $ref: "#/components/schemas/TagKey"
         type:
-          type: string
-          const: text
+          $ref: "#/components/schemas/TextTagType"
         value:
           $ref: "#/components/schemas/TextTagValue"
 
@@ -498,8 +611,7 @@ components:
         key:
           $ref: "#/components/schemas/TagKey"
         type:
-          type: string
-          const: integer
+          $ref: "#/components/schemas/IntegerTagType"
         value:
           $ref: "#/components/schemas/IntegerTagValue"
 
@@ -512,8 +624,7 @@ components:
         key:
           $ref: "#/components/schemas/TagKey"
         type:
-          type: string
-          const: real
+          $ref: "#/components/schemas/RealTagType"
         value:
           $ref: "#/components/schemas/RealTagValue"
 
@@ -526,8 +637,7 @@ components:
         key:
           $ref: "#/components/schemas/TagKey"
         type:
-          type: string
-          const: textSet
+          $ref: "#/components/schemas/TextSetTagType"
         values:
           type: array
           uniqueItems: true
@@ -543,8 +653,7 @@ components:
         key:
           $ref: "#/components/schemas/TagKey"
         type:
-          type: string
-          const: integerSet
+          $ref: "#/components/schemas/IntegerSetTagType"
         values:
           type: array
           uniqueItems: true
@@ -560,33 +669,285 @@ components:
         key:
           $ref: "#/components/schemas/TagKey"
         type:
-          type: string
-          const: realSet
+          $ref: "#/components/schemas/RealSetTagType"
         values:
           type: array
           uniqueItems: true
           items:
             $ref: "#/components/schemas/RealTagValue"
 
-    InvalidTag:
+    ContentDiagnostic:
+      oneOf:
+        - $ref: "#/components/schemas/InvalidKeyDiagnostic"
+        - $ref: "#/components/schemas/DuplicateKeyDiagnostic"
+        - $ref: "#/components/schemas/UnsupportedXmpValueTypeDiagnostic"
+        - $ref: "#/components/schemas/NotAllowedTagKeyDiagnostic"
+        - $ref: "#/components/schemas/UnparseableTagValueDiagnostic"
+        - $ref: "#/components/schemas/DuplicateSetValueDiagnostic"
+        - $ref: "#/components/schemas/NotAllowedTagValueDiagnostic"
+        - $ref: "#/components/schemas/MissingRequiredTagDiagnostic"
+      discriminator:
+        propertyName: kind
+        mapping:
+          invalidKey: "#/components/schemas/InvalidKeyDiagnostic"
+          duplicateKey: "#/components/schemas/DuplicateKeyDiagnostic"
+          unsupportedXmpValueType: "#/components/schemas/UnsupportedXmpValueTypeDiagnostic"
+          notAllowedTagKey: "#/components/schemas/NotAllowedTagKeyDiagnostic"
+          unparseableTagValue: "#/components/schemas/UnparseableTagValueDiagnostic"
+          duplicateSetValue: "#/components/schemas/DuplicateSetValueDiagnostic"
+          notAllowedTagValue: "#/components/schemas/NotAllowedTagValueDiagnostic"
+          missingRequiredTag: "#/components/schemas/MissingRequiredTagDiagnostic"
+
+    InvalidKeyDiagnostic:
       type: object
-      description: |
-        無効なタグの情報
       additionalProperties: false
-      required: [key, reason]
+      required: [key, kind]
       properties:
         key:
           type: string
-          description: 無効となる該当タグ名
+          description: 不正なXMPプロパティ名をそのまま返す
           example: Invalid-Key
-        reason:
-          type: string
-          enum: [INVALID_KEY, UNSUPPORTED_VALUE_TYPE, INVALID_VALUE]
-          description: |
-            - `INVALID_KEY`: タグ名が条件を満たしていない
-            - `UNSUPPORTED_VALUE_TYPE`: タグの型がサポートされていない
-            - `INVALID_VALUE`: 値が条件を満たしていない
-          example: INVALID_KEY
+        kind:
+          $ref: "#/components/schemas/InvalidKeyDiagnosticKind"
+
+    DuplicateKeyDiagnostic:
+      type: object
+      additionalProperties: false
+      required: [key, kind]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        kind:
+          $ref: "#/components/schemas/DuplicateKeyDiagnosticKind"
+
+    UnsupportedXmpValueTypeDiagnostic:
+      type: object
+      additionalProperties: false
+      required: [key, kind]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        kind:
+          $ref: "#/components/schemas/UnsupportedXmpValueTypeDiagnosticKind"
+
+    NotAllowedTagKeyDiagnostic:
+      type: object
+      additionalProperties: false
+      required: [key, kind]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        kind:
+          $ref: "#/components/schemas/NotAllowedTagKeyDiagnosticKind"
+
+    UnparseableTagValueDiagnostic:
+      type: object
+      additionalProperties: false
+      required: [key, kind]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        kind:
+          $ref: "#/components/schemas/UnparseableTagValueDiagnosticKind"
+        definition:
+          $ref: "#/components/schemas/TagDefinition"
+
+    DuplicateSetValueDiagnostic:
+      type: object
+      additionalProperties: false
+      required: [key, kind]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        kind:
+          $ref: "#/components/schemas/DuplicateSetValueDiagnosticKind"
+
+    NotAllowedTagValueDiagnostic:
+      type: object
+      additionalProperties: false
+      required: [key, kind, definition]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        kind:
+          $ref: "#/components/schemas/NotAllowedTagValueDiagnosticKind"
+        definition:
+          $ref: "#/components/schemas/TagDefinition"
+
+    MissingRequiredTagDiagnostic:
+      type: object
+      additionalProperties: false
+      required: [key, kind, definition]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        kind:
+          $ref: "#/components/schemas/MissingRequiredTagDiagnosticKind"
+        definition:
+          $ref: "#/components/schemas/TagDefinition"
+
+    TagDefinition:
+      description: タグスキーマに記載されたタグ定義
+      oneOf:
+        - $ref: "#/components/schemas/KeyOnlyTagDefinition"
+        - $ref: "#/components/schemas/TextTagDefinition"
+        - $ref: "#/components/schemas/IntegerTagDefinition"
+        - $ref: "#/components/schemas/RealTagDefinition"
+        - $ref: "#/components/schemas/TextSetTagDefinition"
+        - $ref: "#/components/schemas/IntegerSetTagDefinition"
+        - $ref: "#/components/schemas/RealSetTagDefinition"
+      discriminator:
+        propertyName: type
+        mapping:
+          keyOnly: "#/components/schemas/KeyOnlyTagDefinition"
+          text: "#/components/schemas/TextTagDefinition"
+          integer: "#/components/schemas/IntegerTagDefinition"
+          real: "#/components/schemas/RealTagDefinition"
+          textSet: "#/components/schemas/TextSetTagDefinition"
+          integerSet: "#/components/schemas/IntegerSetTagDefinition"
+          realSet: "#/components/schemas/RealSetTagDefinition"
+
+    KeyOnlyTagDefinition:
+      type: object
+      additionalProperties: false
+      required: [key, type]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        type:
+          $ref: "#/components/schemas/KeyOnlyTagType"
+
+    TextTagDefinition:
+      type: object
+      description: 単一のText値の定義。allowedValuesとminLength・maxLengthは同時に指定しない
+      additionalProperties: false
+      required: [key, type]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        type:
+          $ref: "#/components/schemas/TextTagType"
+        minLength:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 255
+        maxLength:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 255
+        allowedValues:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/TextTagValue"
+
+    IntegerTagDefinition:
+      type: object
+      description: 単一のInteger値の定義。allowedValuesとmin・maxは同時に指定しない
+      additionalProperties: false
+      required: [key, type]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        type:
+          $ref: "#/components/schemas/IntegerTagType"
+        min:
+          $ref: "#/components/schemas/IntegerTagValue"
+        max:
+          $ref: "#/components/schemas/IntegerTagValue"
+        allowedValues:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/IntegerTagValue"
+
+    RealTagDefinition:
+      type: object
+      description: 単一のReal値の定義。allowedValuesとmin・maxは同時に指定しない
+      additionalProperties: false
+      required: [key, type]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        type:
+          $ref: "#/components/schemas/RealTagType"
+        min:
+          $ref: "#/components/schemas/RealTagValue"
+        max:
+          $ref: "#/components/schemas/RealTagValue"
+        allowedValues:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/RealTagValue"
+
+    TextSetTagDefinition:
+      type: object
+      description: Text値からなる集合の定義。allowedValuesとminLength・maxLengthは同時に指定しない
+      additionalProperties: false
+      required: [key, type]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        type:
+          $ref: "#/components/schemas/TextSetTagType"
+        minLength:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 255
+        maxLength:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 255
+        allowedValues:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/TextTagValue"
+
+    IntegerSetTagDefinition:
+      type: object
+      description: Integer値からなる集合の定義。allowedValuesとmin・maxは同時に指定しない
+      additionalProperties: false
+      required: [key, type]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        type:
+          $ref: "#/components/schemas/IntegerSetTagType"
+        min:
+          $ref: "#/components/schemas/IntegerTagValue"
+        max:
+          $ref: "#/components/schemas/IntegerTagValue"
+        allowedValues:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/IntegerTagValue"
+
+    RealSetTagDefinition:
+      type: object
+      description: Real値からなる集合の定義。allowedValuesとmin・maxは同時に指定しない
+      additionalProperties: false
+      required: [key, type]
+      properties:
+        key:
+          $ref: "#/components/schemas/TagKey"
+        type:
+          $ref: "#/components/schemas/RealSetTagType"
+        min:
+          $ref: "#/components/schemas/RealTagValue"
+        max:
+          $ref: "#/components/schemas/RealTagValue"
+        allowedValues:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/RealTagValue"
 
     ContentPage:
       type: object
