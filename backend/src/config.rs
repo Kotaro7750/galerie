@@ -5,10 +5,12 @@ use thiserror::Error;
 use authorization::AuthorizationConfig;
 use content_access::ContentAccessConfig;
 use content_storage::ContentStorageConfig;
+use tag_schema::TagSchemaConfig;
 
 pub(crate) mod authorization;
 mod content_access;
 mod content_storage;
+mod tag_schema;
 
 #[derive(Debug, Error)]
 /// Represents an error that can occur during configuration validation
@@ -17,6 +19,8 @@ pub(crate) enum ConfigError {
     InvalidConfig(String),
     #[error("constructing content storage: {0}")]
     ContentStorageConstruction(String),
+    #[error("constructing tag schema: {0}")]
+    TagSchemaConstruction(String),
     #[error("constructing content access configurator: {0}")]
     ContentAccessConstruction(String),
     #[error("constructing authorization: {0}")]
@@ -40,6 +44,8 @@ pub(crate) struct GalerieConfig {
     authorization: AuthorizationConfig,
     cors_origin: Option<String>,
     content_storage: ContentStorageConfig,
+    #[serde(default)]
+    tag_schema: TagSchemaConfig,
 }
 
 impl GalerieConfig {
@@ -53,6 +59,10 @@ impl GalerieConfig {
 
     pub(crate) fn content_storage(&self) -> &ContentStorageConfig {
         &self.content_storage
+    }
+
+    pub(crate) fn tag_schema(&self) -> &TagSchemaConfig {
+        &self.tag_schema
     }
 
     pub(crate) fn content_access(&self) -> &ContentAccessConfig {
@@ -76,7 +86,9 @@ impl GalerieConfig {
         })?;
         self.authorization.validate()?;
         self.content_access.validate()?;
-        self.content_storage.validate().await
+        self.content_storage.validate().await?;
+        self.tag_schema.validate().await?;
+        Ok(())
     }
 
     pub(crate) fn listen_address(&self) -> String {

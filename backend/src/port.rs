@@ -3,7 +3,7 @@ use std::num::NonZeroU64;
 
 use crate::domain::{
     Content, ContentId, Error, content_access::ContentAccessConfiguration,
-    search_condition::SearchCondition,
+    search_condition::SearchCondition, tag_schema::TagSchema,
 };
 
 pub(crate) trait ContentAccessConfigurator: Send + Sync {
@@ -20,6 +20,11 @@ pub(crate) trait ContentStorage: Send + Sync {
         limit: NonZeroU64,
         cursor: Option<ContentId>,
     ) -> Result<(Vec<Content>, Option<ContentId>), Error>;
+}
+
+#[async_trait]
+pub(crate) trait TagSchemaStorage: Send + Sync {
+    async fn get_tag_schema(&self) -> Result<TagSchema, Error>;
 }
 
 pub(crate) trait MetadataIndex: Send + Sync {

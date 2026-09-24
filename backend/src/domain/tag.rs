@@ -5,6 +5,7 @@ use quick_xml::{
     name::{Namespace, ResolveResult},
     reader::NsReader,
 };
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use unicode_xid::UnicodeXID;
 use xmp_toolkit::{IterOptions, XmpMeta, XmpProperty, XmpValue};
@@ -67,7 +68,8 @@ impl Tag {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[serde(try_from = "String", into = "String")]
 pub(crate) struct TagKey {
     key: String,
 }
@@ -111,7 +113,26 @@ impl AsRef<str> for TagKey {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+impl TryFrom<String> for TagKey {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if Self::is_valid_for_key(&value) {
+            Ok(Self { key: value })
+        } else {
+            Err(format!("Invalid text tag value: {}", value))
+        }
+    }
+}
+
+impl From<TagKey> for String {
+    fn from(value: TagKey) -> Self {
+        value.key
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(try_from = "String", into = "String")]
 pub(crate) struct TextTagValue(String);
 
 impl TextTagValue {
@@ -124,13 +145,32 @@ impl TextTagValue {
     }
 }
 
+impl TryFrom<String> for TextTagValue {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if Self::new(&value).is_some() {
+            Ok(Self(value))
+        } else {
+            Err(format!("Invalid tag key: {}", value))
+        }
+    }
+}
+
 impl AsRef<str> for TextTagValue {
     fn as_ref(&self) -> &str {
         &self.0
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+impl From<TextTagValue> for String {
+    fn from(value: TextTagValue) -> Self {
+        value.0
+    }
+}
+
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(try_from = "i64", into = "i64")]
 pub(crate) struct IntegerTagValue(i64);
 
 impl IntegerTagValue {
@@ -144,18 +184,55 @@ impl IntegerTagValue {
     }
 }
 
+impl TryFrom<i64> for IntegerTagValue {
+    type Error = String;
+
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        match Self::new(value) {
+            Some(num) => Ok(num),
+            None => Err(format!("Invalid integer value: {}", value)),
+        }
+    }
+}
+
+impl From<IntegerTagValue> for i64 {
+    fn from(value: IntegerTagValue) -> Self {
+        value.0
+    }
+}
+
 impl AsRef<i64> for IntegerTagValue {
     fn as_ref(&self) -> &i64 {
         &self.0
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialOrd, PartialEq, Deserialize, Serialize)]
+#[serde(from = "f64", into = "f64")]
 pub(crate) struct RealTagValue(f64);
+
+impl RealTagValue {
+    #[allow(dead_code)]
+    fn new(value: f64) -> Self {
+        Self(value)
+    }
+}
 
 impl AsRef<f64> for RealTagValue {
     fn as_ref(&self) -> &f64 {
         &self.0
+    }
+}
+
+impl From<f64> for RealTagValue {
+    fn from(value: f64) -> Self {
+        Self(value)
+    }
+}
+
+impl From<RealTagValue> for f64 {
+    fn from(value: RealTagValue) -> Self {
+        value.0
     }
 }
 

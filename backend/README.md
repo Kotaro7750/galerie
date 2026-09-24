@@ -59,6 +59,28 @@ Content storage has no image default. Set `GALERIE_CONTENT_STORAGE__MODE` and th
 
 AWS credentials are resolved through the AWS SDK credential provider chain.
 
+## Tag Schema
+
+When configured, the tag schema is loaded and validated during startup. Its schema document is YAML.
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `GALERIE_TAG_SCHEMA__MODE` | No | `None` | Selects `None`, `FileSystem`, or `S3`. `None` skips tag-schema loading. |
+
+### FileSystem Tag Schema
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `GALERIE_TAG_SCHEMA__FILE_SYSTEM__FILE_PATH` | Yes | - | Path to the YAML tag-schema file. Mount this file when running in a container. |
+
+### S3 Tag Schema
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `GALERIE_TAG_SCHEMA__S3__REGION` | Yes | - | AWS region containing the S3 bucket. |
+| `GALERIE_TAG_SCHEMA__S3__BUCKET_NAME` | Yes | - | Name of the S3 bucket containing the YAML tag-schema object. |
+| `GALERIE_TAG_SCHEMA__S3__KEY` | Yes | - | Object key of the YAML tag-schema document. |
+
 ## Content Access
 
 Content access control is disabled by default with `GALERIE_CONTENT_ACCESS__MODE=Nop`.

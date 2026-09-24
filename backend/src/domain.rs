@@ -10,6 +10,7 @@ use crate::domain::tag::{SkippedTagSet, TagSet};
 pub(crate) mod content_access;
 pub(crate) mod search_condition;
 pub(crate) mod tag;
+pub(crate) mod tag_schema;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {

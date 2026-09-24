@@ -41,6 +41,7 @@ async fn main() -> anyhow::Result<()> {
         .try_deserialize::<GalerieConfig>()?;
 
     config.validate().await?;
+    let _tag_schema_storage = config.tag_schema().construct_schema_storage().await?;
 
     let content_storage = config.content_storage().construct_content_storage().await?;
     let mut metadata_index = InMemoryMetadataIndex::new();
