@@ -7,7 +7,7 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 
-use crate::domain::tag::parse_metadata;
+use crate::domain::tag::parse::parse_metadata;
 use crate::domain::{Content, ContentId, Error, MediaType};
 use crate::port::ContentStorage;
 

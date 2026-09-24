@@ -10,7 +10,7 @@ use aws_sdk_s3::{
 use aws_smithy_async::future::pagination_stream::PaginationStream;
 
 use crate::{
-    domain::{Content, ContentId, Error, MediaType, tag::parse_metadata},
+    domain::{Content, ContentId, Error, MediaType, tag::parse::parse_metadata},
     port::ContentStorage,
 };
 
