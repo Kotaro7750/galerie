@@ -139,14 +139,13 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
       { key: 'authors', type: 'textSet', values: ['Alice', 'Bob'] },
       { key: 'pages', type: 'integerSet', values: [1, 3] },
       { key: 'weights', type: 'realSet', values: [0.5, 1.5] },
-      { key: 'empty', type: 'text', value: '' },
       { key: 'emptySet', type: 'textSet', values: [] },
       { key: 'long', type: 'text', value: '長いタグ'.repeat(100) },
     ],
     invalidTags: [
       { key: 'Invalid-Key', reason: 'INVALID_KEY' },
       { key: 'OrderedArray', reason: 'UNSUPPORTED_VALUE_TYPE' },
-      { key: 'BooleanFalse', reason: 'INVALID_VALUE' },
+      { key: 'EmptyStringSet', reason: 'INVALID_VALUE' },
     ],
   };
   await mockImages(page);
@@ -171,12 +170,12 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
   }
   await expect(panel).toBeVisible();
   const badges = panel.getByRole('list', { name: 'タグ', exact: true }).getByRole('listitem');
-  await expect(badges).toHaveCount(13);
+  await expect(badges).toHaveCount(12);
   expect(await badges.locator(':scope > [aria-label]').evaluateAll((items) => items.map((item) => item.getAttribute('aria-label')))).toEqual([
     'animation', 'category: landscape', 'rating: 0', 'score: -3.14',
     'authors: Alice, Bob', 'pages: 1, 3', 'weights: 0.5, 1.5',
-    'empty: ', 'emptySet: ', `long: ${'長いタグ'.repeat(100)}`,
-    'Invalid-Key: タグ名が無効です', 'OrderedArray: 未対応の型です', 'BooleanFalse: 値が無効です',
+    'emptySet: ', `long: ${'長いタグ'.repeat(100)}`,
+    'Invalid-Key: タグ名が無効です', 'OrderedArray: 未対応の型です', 'EmptyStringSet: 値が無効です',
   ]);
   const category = panel.getByLabel('category: landscape', { exact: true });
   await expect(category.locator('.lucide-tag')).toBeVisible();
@@ -213,7 +212,7 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
   await page.screenshot({ path: `test-results/tags-gallery-${test.info().project.name}.png`, fullPage: true });
   await card.click({ position: { x: 4, y: 4 } });
   const detail = page.getByRole('region', { name: 'タグ情報' });
-  await expect(detail.getByRole('list', { name: 'タグ', exact: true }).getByRole('listitem')).toHaveCount(13);
+  await expect(detail.getByRole('list', { name: 'タグ', exact: true }).getByRole('listitem')).toHaveCount(12);
   const detailAnimation = detail.getByLabel('animation', { exact: true });
   await expect(detailAnimation).toHaveClass(/cursor-pointer/);
   const detailCategory = detail.getByLabel('category: landscape', { exact: true });
@@ -234,7 +233,7 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
   await expect(detailCategory.locator('.lucide-tag')).toBeVisible();
   await expect(detail.getByText('無効なタグ', { exact: true })).toHaveCount(0);
   await expect(detail.getByRole('list', { name: 'タグ', exact: true }).locator('.badge-error')).toHaveText([
-    'Invalid-Key', 'OrderedArray', 'BooleanFalse',
+    'Invalid-Key', 'OrderedArray', 'EmptyStringSet',
   ]);
   const invalidBadge = detail.getByLabel('Invalid-Key: タグ名が無効です', { exact: true });
   await expect(invalidBadge.locator('.badge-dash.badge-error')).toBeVisible();

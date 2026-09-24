@@ -139,7 +139,7 @@ pub(crate) struct TextTagValue(String);
 
 impl TextTagValue {
     pub(crate) fn new(value: &str) -> Option<Self> {
-        if unicode_normalization::is_nfc(value) {
+        if !value.is_empty() && unicode_normalization::is_nfc(value) {
             Some(Self(value.to_string()))
         } else {
             None
@@ -391,6 +391,7 @@ mod tests {
 
     #[test]
     fn text_text_tag_value() {
+        assert!(TextTagValue::new("").is_none());
         assert!(TextTagValue::new("が".nfd().collect::<String>().as_str()).is_none(),);
         assert!(TextTagValue::new("が".nfc().collect::<String>().as_str()).is_some(),);
     }

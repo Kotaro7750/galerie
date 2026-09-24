@@ -35,7 +35,7 @@ export interface TextTag {
      */
     type: TextTagTypeEnum;
     /**
-     * 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFCで正規化済みの値
+     * 長さが1以上の有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFCで正規化済みの値
      * @type {string}
      * @memberof TextTag
      */

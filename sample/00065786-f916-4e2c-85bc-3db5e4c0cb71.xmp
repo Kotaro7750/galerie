@@ -13,7 +13,7 @@
    </rdf:Bag>
   </galerie:subjects>
   <galerie:Invalid-Key>無効なタグ名</galerie:Invalid-Key>
-  <galerie:disabled>False</galerie:disabled>
+  <galerie:disabled><rdf:Bag><rdf:li/></rdf:Bag></galerie:disabled>
  </rdf:Description>
 </rdf:RDF>
 </x:xmpmeta>

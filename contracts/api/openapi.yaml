@@ -164,7 +164,7 @@ paths:
                             reason: INVALID_KEY
                           - key: OrderedArray
                             reason: UNSUPPORTED_VALUE_TYPE
-                          - key: BooleanFalse
+                          - key: EmptyStringSet
                             reason: INVALID_VALUE
                     nextCursor: eyJhZnRlciI6IjJmMWM3NWZjIn0
                 lastPage:
@@ -236,7 +236,7 @@ paths:
                     reason: INVALID_KEY
                   - key: OrderedArray
                     reason: UNSUPPORTED_VALUE_TYPE
-                  - key: BooleanFalse
+                  - key: EmptyStringSet
                     reason: INVALID_VALUE
         "400":
           $ref: "#/components/responses/BadRequest"
@@ -433,7 +433,8 @@ components:
 
     TextTagValue:
       type: string
-      description: 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFCで正規化済みの値
+      minLength: 1
+      description: 長さが1以上の有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFCで正規化済みの値
       example: landscape
 
     IntegerTagValue:

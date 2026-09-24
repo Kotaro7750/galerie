@@ -252,15 +252,7 @@ mod tests {
                         .collect()
                     },
                     Tag::KeyOnly {
-                        key: TagKey::new("BooleanTrue").unwrap()
-                    },
-                    Tag::Text {
-                        key: TagKey::new("LiteralTrue").unwrap(),
-                        value: TextTagValue::new("True").unwrap()
-                    },
-                    Tag::Text {
-                        key: TagKey::new("LiteralFalse").unwrap(),
-                        value: TextTagValue::new("False").unwrap()
+                        key: TagKey::new("EmptyString").unwrap()
                     },
                     Tag::Text {
                         key: TagKey::new("Integer").unwrap(),
@@ -304,7 +296,7 @@ mod tests {
             SkippedTagSet::new(
                 vec![
                     SkippedTag {
-                        key: "BooleanFalse".to_string(),
+                        key: "EmptyStringSet".to_string(),
                         reason: SkippedReason::InvalidValue
                     },
                     SkippedTag {

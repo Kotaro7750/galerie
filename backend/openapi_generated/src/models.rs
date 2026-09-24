@@ -3203,9 +3203,12 @@ pub struct TextTag {
           #[validate(custom(function = "check_xss_string"))]
     pub r_type: String,
 
-    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFCで正規化済みの値
+    /// 長さが1以上の有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFCで正規化済みの値
     #[serde(rename = "value")]
-          #[validate(custom(function = "check_xss_string"))]
+    #[validate(
+            length(min = 1),
+          custom(function = "check_xss_string"),
+    )]
     pub value: String,
 
 }
@@ -3335,7 +3338,7 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<TextTag> {
 
 
 
-/// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFCで正規化済みの値
+/// 長さが1以上の有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFCで正規化済みの値
 #[derive(Debug, Clone, PartialEq, PartialOrd,  serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
 pub struct TextTagValue(pub String);
