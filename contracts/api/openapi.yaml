@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Galerie API
-  version: 0.6.0
+  version: 0.6.1
   license:
     name: MIT License
     identifier: MIT
@@ -72,6 +72,65 @@ paths:
           $ref: "#/components/responses/InternalServerError"
 
   /contents:
+    post:
+      operationId: createContent
+      tags:
+        - Contents
+      summary: コンテンツの登録
+      description: |
+        コンテンツファイルをタグとともに登録する。
+        いずれかのタグが不正な場合はエラーを返し、コンテンツは登録されない。
+        タグがすべて正しい場合のみ、タグをXMPサイドカーに保存してコンテンツを登録する。
+      requestBody:
+        description: コンテンツファイルと登録するタグ
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [content, metadata]
+              properties:
+                content:
+                  # OpenAPI Generator 7.24.0でBlob/Bytesとして生成するための互換表記。
+                  type: string
+                  format: binary
+                  description: AVIFコンテンツファイルの生バイト列
+                metadata:
+                  $ref: "#/components/schemas/ContentMetadataInput"
+            encoding:
+              content:
+                contentType: image/avif
+              metadata:
+                contentType: application/json
+      responses:
+        "201":
+          description: コンテンツとすべてのタグを登録した。返却するdiagnosticsは空配列
+          headers:
+            Location:
+              description: 登録したコンテンツの個別取得APIへの相対パス
+              schema:
+                type: string
+                example: /api/v0/contents/2f1c75fc-55de-4d4b-8992-76050f65dff0
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Content"
+        "400":
+          description: コンテンツファイル、タグ、またはタグ全体の制約が不正であり、登録しなかった
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BadRequestProblem"
+              example:
+                type: https://api.example.com/problems/invalid-content-registration
+                title: Invalid content registration
+                status: 400
+                detail: The tag key "category" is not allowed.
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
     get:
       operationId: listContents
       tags:
@@ -307,6 +366,18 @@ components:
       example: 30
 
   schemas:
+    ContentMetadataInput:
+      type: object
+      description: コンテンツに設定するメタデータ
+      additionalProperties: false
+      required: [tags]
+      properties:
+        tags:
+          type: array
+          description: 設定するタグ。タグがない場合は空配列を指定する。
+          items:
+            $ref: "#/components/schemas/Tag"
+
     ContentAccessConfiguration:
       type: object
       description: クライアントに設定されたコンテンツアクセス設定の有効期限
@@ -1022,6 +1093,16 @@ components:
               type: integer
               const: 404
 
+    UnsupportedMediaTypeProblem:
+      description: 対応していないメディアタイプを表すProblem Details
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - type: object
+          properties:
+            status:
+              type: integer
+              const: 415
+
     InternalServerErrorProblem:
       description: サーバー内部エラーを表すProblem Details
       allOf:
@@ -1056,6 +1137,18 @@ components:
             title: Content not found
             status: 404
             detail: The requested content does not exist or its metadata cannot be retrieved.
+
+    UnsupportedMediaType:
+      description: リクエストのメディアタイプに対応していない
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/UnsupportedMediaTypeProblem"
+          example:
+            type: https://api.example.com/problems/unsupported-media-type
+            title: Unsupported media type
+            status: 415
+            detail: Only image/avif is supported.
 
     InternalServerError:
       description: サーバー内部で予期しないエラーが発生した
