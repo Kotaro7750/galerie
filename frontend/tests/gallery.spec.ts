@@ -170,13 +170,34 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
   }
   await expect(panel).toBeVisible();
   const badges = panel.getByRole('list', { name: 'タグ', exact: true }).getByRole('listitem');
-  await expect(badges).toHaveCount(12);
+  await expect(badges).toHaveCount(10);
   expect(await badges.locator(':scope > [aria-label]').evaluateAll((items) => items.map((item) => item.getAttribute('aria-label')))).toEqual([
+    '診断情報 3 件: Invalid-Key: タグ名が無効です、OrderedArray: 未対応のXMP値形式です、EmptyStringSet: タグの値を解釈できません',
     'animation', 'category: landscape', 'rating: 0', 'score: -3.14',
     'authors: Alice, Bob', 'pages: 1, 3', 'weights: 0.5, 1.5',
     'emptySet: ', `long: ${'長いタグ'.repeat(100)}`,
+  ]);
+  const diagnosticSummary = panel.getByLabel(/診断情報 3 件:/);
+  await expect(diagnosticSummary).toHaveText('');
+  await expect(diagnosticSummary.locator('.lucide-triangle-alert')).toBeVisible();
+  await expect(diagnosticSummary).toHaveClass(/badge-error/);
+  await expect(diagnosticSummary).not.toHaveClass(/badge-dash/);
+  const tooltip = panel.getByRole('tooltip', { includeHidden: true });
+  await expect(tooltip).toBeHidden();
+  if (isMobile) await diagnosticSummary.focus();
+  else await diagnosticSummary.hover();
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip.getByRole('list', { name: '診断の一覧' }).getByRole('listitem')).toHaveText([
     'Invalid-Key: タグ名が無効です', 'OrderedArray: 未対応のXMP値形式です', 'EmptyStringSet: タグの値を解釈できません',
   ]);
+  const tooltipBounds = await tooltip.boundingBox();
+  const cardBounds = await cardContainer.boundingBox();
+  expect(tooltipBounds!.y).toBeGreaterThanOrEqual(cardBounds!.y);
+  expect(tooltipBounds!.y + tooltipBounds!.height).toBeLessThanOrEqual(cardBounds!.y + cardBounds!.height + 1);
+  const scrollArea = panel.getByLabel('タグをスクロール');
+  expect(await scrollArea.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await scrollArea.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  expect(await scrollArea.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   const category = panel.getByLabel('category: landscape', { exact: true });
   await expect(category.locator('.lucide-tag')).toBeVisible();
   await expect(category.locator('.lucide-hash')).toBeHidden();
@@ -205,7 +226,8 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
   expect(imageBounds).not.toBeNull();
   expect(overlayBounds).not.toBeNull();
   expect(overlayBounds!.y).toBeGreaterThanOrEqual(imageBounds!.y - 1);
-  expect(overlayBounds!.y + overlayBounds!.height).toBeLessThanOrEqual(imageBounds!.y + imageBounds!.height + 1);
+  expect(overlayBounds!.height).toBeLessThanOrEqual(imageBounds!.height * 2 / 3 + 1);
+  expect(overlayBounds!.y + overlayBounds!.height).toBeLessThan(imageBounds!.y + imageBounds!.height - 1);
   await expect(panel.getByText('タグ', { exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/tags-gallery-${test.info().project.name}.png`, fullPage: true });
@@ -234,7 +256,8 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
     'Invalid-Key', 'OrderedArray', 'EmptyStringSet',
   ]);
   const diagnosticBadge = detail.getByLabel('Invalid-Key: タグ名が無効です', { exact: true });
-  await expect(diagnosticBadge.locator('.badge-dash.badge-error')).toBeVisible();
+  await expect(diagnosticBadge.locator('.badge-error')).toBeVisible();
+  await expect(diagnosticBadge.locator('.badge')).not.toHaveClass(/badge-dash/);
   await expect(diagnosticBadge.locator('.lucide-tag')).toBeVisible();
   await expect(diagnosticBadge).toHaveAttribute('data-tip', 'タグ名が無効です');
   if (!isMobile) {
@@ -262,6 +285,32 @@ test('omits empty tag overlays and shows the empty state on the content page', a
   await expect(page.getByText('タグはありません', { exact: true })).toBeVisible();
 });
 
+test('starts a short tag list at the top of the thumbnail', async ({ page, isMobile }) => {
+  await mockImages(page);
+  const item = { ...content(0), tags: [
+    { key: 'animation', type: 'keyOnly' },
+    { key: 'category', type: 'text', value: 'abstract' },
+  ], diagnostics: [{ key: 'Invalid-Key', kind: 'invalidKey' }] };
+  await page.route('**/api/v0/contents?*', (route) => route.fulfill({ json: { items: [item] } }));
+  await page.goto('/#/contents');
+  const card = page.getByRole('link', { name: '画像 1 を開く', exact: true });
+  if (!isMobile) await card.focus();
+  const panel = page.getByRole('region', { name: '画像 1 のタグ' });
+  const firstTag = panel.getByLabel('animation', { exact: true });
+  const positions = await panel.evaluate((element) => ({
+    panelTop: element.getBoundingClientRect().top,
+    diagnosticTop: element.querySelector('.badge-error')!.getBoundingClientRect().top,
+    tagTop: element.querySelector('[aria-label="animation"]')!.getBoundingClientRect().top,
+    diagnosticRight: element.querySelector('.badge-error')!.getBoundingClientRect().right,
+    tagLeft: element.querySelector('[aria-label="animation"]')!.getBoundingClientRect().left,
+  }));
+  expect(positions.diagnosticTop - positions.panelTop).toBeLessThanOrEqual(16);
+  expect(Math.abs(positions.tagTop - positions.diagnosticTop)).toBeLessThanOrEqual(2);
+  expect(positions.tagLeft).toBeGreaterThan(positions.diagnosticRight);
+  await expect(firstTag).toBeVisible();
+  expect(await panel.getByLabel('タグをスクロール').evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true);
+});
+
 test('shows an overlay for content with only diagnostics', async ({ page }) => {
   await mockImages(page);
   const item = { ...content(0), diagnostics: [
@@ -273,16 +322,33 @@ test('shows an overlay for content with only diagnostics', async ({ page }) => {
   await page.goto('/#/contents');
   await page.getByRole('link', { name: '画像 1 を開く', exact: true }).focus();
   const panel = page.getByRole('region', { name: '画像 1 のタグ', exact: true });
-  await expect(panel.locator('.badge-error')).toHaveText(['Invalid-Key', 'category', 'author']);
-  const badge = panel.getByLabel('Invalid-Key: タグ名が無効です', { exact: true });
+  const badge = panel.getByLabel(/診断情報 3 件:/);
+  await expect(badge).toHaveText('');
+  await expect(badge.locator('.lucide-triangle-alert')).toBeVisible();
+  await expect(badge).not.toHaveClass(/badge-dash/);
   await badge.focus();
   await expect(panel).toBeVisible();
   await expect(badge).toBeVisible();
-  await expect.poll(() => badge.evaluate((element) => getComputedStyle(element, '::before').opacity)).toBe('1');
-  await expect(panel.getByLabel('category: タグの値がスキーマの制約を満たしていません')).toBeVisible();
-  await expect(panel.getByLabel('author: 必須タグがありません')).toBeVisible();
+  await expect(panel.getByRole('tooltip').getByRole('listitem')).toHaveText([
+    'Invalid-Key: タグ名が無効です', 'category: タグの値がスキーマの制約を満たしていません', 'author: 必須タグがありません',
+  ]);
   await expect(panel.getByRole('button')).toHaveCount(0);
   await expect(page.getByText('タグはありません', { exact: true })).toHaveCount(0);
+});
+
+test('outlines only diagnostics for tags absent from XMP on the content page', async ({ page }) => {
+  const item = { ...content(0), diagnostics: [
+    { key: 'Count', kind: 'unparseableTagValue' },
+    { key: 'Count', kind: 'missingRequiredTag', definition: { key: 'Count', type: 'integer' } },
+    { key: 'author', kind: 'missingRequiredTag', definition: { key: 'author', type: 'text' } },
+  ] };
+  await page.route(`**/api/v0/contents/${id}`, (route) => route.fulfill({ json: item }));
+  await page.goto(`/#/contents/${id}`);
+  const detail = page.getByRole('region', { name: 'タグ情報' });
+  for (const name of ['Count: タグの値を解釈できません', 'Count: 必須タグがありません']) {
+    await expect(detail.getByLabel(name, { exact: true }).locator('.badge')).not.toHaveClass(/badge-dash/);
+  }
+  await expect(detail.getByLabel('author: 必須タグがありません', { exact: true }).locator('.badge')).toHaveClass(/badge-dash/);
 });
 
 test('theme toggle overrides either system preference and survives navigation', async ({ page }) => {

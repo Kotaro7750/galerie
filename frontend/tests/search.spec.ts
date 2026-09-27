@@ -34,7 +34,7 @@ test('draft terms only run on search, with JSON conditions and matching cursors'
   await page.getByRole('button', { name: '条件に追加', exact: true }).click();
   await expect(page.getByLabel('category: 日本語,+&')).toBeVisible();
   const editCategory = page.getByRole('button', { name: '条件 1 を編集', exact: true });
-  await editCategory.focus();
+  if (test.info().project.name !== 'mobile') await editCategory.focus();
   await editCategory.click();
   await expect(page.getByLabel('タグ名', { exact: true })).toHaveValue('category');
   await expect(page.getByLabel('値 1', { exact: true })).toHaveValue('日本語,+&');
@@ -70,17 +70,24 @@ test('draft terms only run on search, with JSON conditions and matching cursors'
   expect(requests[1].searchParams.get('cursor')).toBe('opaque+/=日本語');
   const removeAuthors = page.getByRole('button', { name: '条件 2 を削除', exact: true });
   const termActions = removeAuthors.locator('..');
-  await expect(termActions).toHaveCSS('opacity', '0');
-  if (test.info().project.name === 'mobile') await removeAuthors.focus();
-  else await page.getByRole('listitem').filter({ has: page.getByLabel('authors', { exact: true }) }).hover();
+  if (test.info().project.name === 'mobile') {
+    await expect(termActions).toHaveCSS('opacity', '1');
+  } else {
+    await expect(termActions).toHaveCSS('opacity', '0');
+    await page.getByRole('listitem').filter({ has: page.getByLabel('authors', { exact: true }) }).hover();
+  }
   await expect(termActions).toHaveCSS('opacity', '1');
   await expect(page.getByRole('button', { name: '条件 2 を編集', exact: true })).toHaveClass(/btn btn-square btn-xs rounded-full/);
   await expect(removeAuthors).toHaveClass(/btn btn-square btn-xs rounded-full/);
   const authorsBadge = page.getByLabel('authors', { exact: true });
   const termItem = page.getByRole('listitem').filter({ has: authorsBadge });
   const [badgeBox, actionsBox, itemBox] = await Promise.all([authorsBadge.boundingBox(), termActions.boundingBox(), termItem.boundingBox()]);
-  expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(actionsBox!.x);
-  expect(itemBox!.width).toBeCloseTo(badgeBox!.width, 0);
+  expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(actionsBox!.x + 1);
+  if (test.info().project.name === 'mobile') {
+    expect(itemBox!.width).toBeGreaterThan(badgeBox!.width);
+    const removeBox = await removeAuthors.boundingBox();
+    expect(removeBox!.width).toBeGreaterThanOrEqual(44);
+  } else expect(itemBox!.width).toBeCloseTo(badgeBox!.width, 0);
   await removeAuthors.click();
   expect(requests).toHaveLength(2);
   await page.getByRole('button', { name: '検索', exact: true }).click();

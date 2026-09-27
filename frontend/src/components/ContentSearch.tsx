@@ -39,11 +39,11 @@ export function ContentSearch() {
         </label>;
       })}</fieldset>
       <TermEditor termToEdit={termToEdit} onAdd={(term) => { setDraft([...draft, term]); setTermToEdit(undefined); }} />
-      {tagTerms.length > 0 && <ul className="flex flex-wrap gap-3" aria-label="検索条件（すべてに一致）">{tagTerms.map((term, index) => <li key={index} className="group/term relative inline-flex max-w-full">
+      {tagTerms.length > 0 && <ul className="flex flex-wrap gap-3" aria-label="検索条件（すべてに一致）">{tagTerms.map((term, index) => <li key={index} className="group/term relative inline-flex max-w-full items-center [@media(hover:none)]:flex-wrap">
           <TagBadge tag={tagFor(term)} />
-          <span className="pointer-events-none absolute start-full top-1/2 z-10 flex -translate-y-1/2 opacity-0 group-hover/term:pointer-events-auto group-hover/term:opacity-100 group-focus-within/term:pointer-events-auto group-focus-within/term:opacity-100">
-            <IconButton className="btn-xs rounded-full" icon={Pencil} label={`条件 ${index + 1} を編集`} onClick={() => { setDraft(draft.filter((candidate) => candidate !== term)); setTermToEdit(term); }} />
-            <IconButton className="btn-xs rounded-full" icon={X} label={`条件 ${index + 1} を削除`} onClick={() => setDraft(draft.filter((candidate) => candidate !== term))} />
+          <span className="pointer-events-none absolute start-full top-1/2 z-10 flex -translate-y-1/2 opacity-0 group-hover/term:pointer-events-auto group-hover/term:opacity-100 group-focus-within/term:pointer-events-auto group-focus-within/term:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:static [@media(hover:none)]:translate-y-0 [@media(hover:none)]:opacity-100">
+            <IconButton className="btn-xs rounded-full [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11" icon={Pencil} label={`条件 ${index + 1} を編集`} onClick={() => { setDraft(draft.filter((candidate) => candidate !== term)); setTermToEdit(term); }} />
+            <IconButton className="btn-xs rounded-full [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11" icon={X} label={`条件 ${index + 1} を削除`} onClick={() => setDraft(draft.filter((candidate) => candidate !== term))} />
           </span>
         </li>)}</ul>}
       <div className="flex flex-wrap justify-center gap-2">
