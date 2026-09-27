@@ -8,14 +8,14 @@ const id = '00065786-f916-4e2c-85bc-3db5e4c0cb71';
 const content = (index: number) => ({
   id: index === 0 ? id : `10000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
   mediaType: 'image/avif',
-  contentUrl: 'http://media.test/original.avif',
-  thumbnailUrl: 'http://media.test/thumbnail.avif',
+  contentUrl: 'https://media.test/original.avif',
+  thumbnailUrl: 'https://media.test/thumbnail.avif',
   tags: [],
-  invalidTags: [],
+  diagnostics: [],
 });
 
 async function mockImages(page: Page) {
-  await page.route('http://media.test/**', (route) => route.fulfill({
+  await page.route('https://media.test/**', (route) => route.fulfill({
     path: '../sample/00065786-f916-4e2c-85bc-3db5e4c0cb71.avif', contentType: 'image/avif',
   }));
 }
@@ -62,7 +62,7 @@ test('scroll forwards the opaque cursor, opens original content and supports dir
   await page.getByRole('link', { name: '画像 1 を開く', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/contents/${id}$`));
   const original = page.getByRole('img', { name: `コンテンツ ${id}` });
-  await expect(original).toHaveAttribute('src', 'http://media.test/original.avif');
+  await expect(original).toHaveAttribute('src', 'https://media.test/original.avif');
   await expect.poll(() => original.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
   await page.reload();
   await expect(original).toBeVisible();
@@ -116,10 +116,10 @@ test('handles missing content and broken image delivery', async ({ page }) => {
   await expect(page.getByRole('alert')).toContainText('コンテンツが見つかりません');
   await page.unroute(`**/api/v0/contents/${id}`);
   await page.route(`**/api/v0/contents/${id}`, (route) => route.fulfill({ json: content(0) }));
-  await page.route('http://media.test/**', (route) => route.abort());
+  await page.route('https://media.test/**', (route) => route.abort());
   await page.getByRole('button', { name: '再試行', exact: true }).click();
   await expect(page.getByText('画像を読み込めませんでした')).toBeVisible();
-  await page.unroute('http://media.test/**');
+  await page.unroute('https://media.test/**');
   await mockImages(page);
   await page.getByRole('button', { name: '画像を再読み込み' }).click();
   await expect.poll(() => page.getByRole('img', { name: `コンテンツ ${id}`, exact: true }).evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
@@ -142,10 +142,10 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
       { key: 'emptySet', type: 'textSet', values: [] },
       { key: 'long', type: 'text', value: '長いタグ'.repeat(100) },
     ],
-    invalidTags: [
-      { key: 'Invalid-Key', reason: 'INVALID_KEY' },
-      { key: 'OrderedArray', reason: 'UNSUPPORTED_VALUE_TYPE' },
-      { key: 'EmptyStringSet', reason: 'INVALID_VALUE' },
+    diagnostics: [
+      { key: 'Invalid-Key', kind: 'invalidKey' },
+      { key: 'OrderedArray', kind: 'unsupportedXmpValueType' },
+      { key: 'EmptyStringSet', kind: 'unparseableTagValue' },
     ],
   };
   await mockImages(page);
@@ -175,7 +175,7 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
     'animation', 'category: landscape', 'rating: 0', 'score: -3.14',
     'authors: Alice, Bob', 'pages: 1, 3', 'weights: 0.5, 1.5',
     'emptySet: ', `long: ${'長いタグ'.repeat(100)}`,
-    'Invalid-Key: タグ名が無効です', 'OrderedArray: 未対応の型です', 'EmptyStringSet: 値が無効です',
+    'Invalid-Key: タグ名が無効です', 'OrderedArray: 未対応のXMP値形式です', 'EmptyStringSet: タグの値を解釈できません',
   ]);
   const category = panel.getByLabel('category: landscape', { exact: true });
   await expect(category.locator('.lucide-tag')).toBeVisible();
@@ -207,7 +207,6 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
   expect(overlayBounds!.y).toBeGreaterThanOrEqual(imageBounds!.y - 1);
   expect(overlayBounds!.y + overlayBounds!.height).toBeLessThanOrEqual(imageBounds!.y + imageBounds!.height + 1);
   await expect(panel.getByText('タグ', { exact: true })).toHaveCount(0);
-  await expect(panel.getByRole('list', { name: '無効なタグ', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/tags-gallery-${test.info().project.name}.png`, fullPage: true });
   await card.click({ position: { x: 4, y: 4 } });
@@ -231,20 +230,19 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
   await expect(detailAuthors.locator('.lucide-tags')).toBeHidden();
   await expect(detailAuthors.locator('.lucide-hash')).toBeVisible();
   await expect(detailCategory.locator('.lucide-tag')).toBeVisible();
-  await expect(detail.getByText('無効なタグ', { exact: true })).toHaveCount(0);
   await expect(detail.getByRole('list', { name: 'タグ', exact: true }).locator('.badge-error')).toHaveText([
     'Invalid-Key', 'OrderedArray', 'EmptyStringSet',
   ]);
-  const invalidBadge = detail.getByLabel('Invalid-Key: タグ名が無効です', { exact: true });
-  await expect(invalidBadge.locator('.badge-dash.badge-error')).toBeVisible();
-  await expect(invalidBadge.locator('.lucide-tag')).toBeVisible();
-  await expect(invalidBadge).toHaveAttribute('data-tip', 'タグ名が無効です');
+  const diagnosticBadge = detail.getByLabel('Invalid-Key: タグ名が無効です', { exact: true });
+  await expect(diagnosticBadge.locator('.badge-dash.badge-error')).toBeVisible();
+  await expect(diagnosticBadge.locator('.lucide-tag')).toBeVisible();
+  await expect(diagnosticBadge).toHaveAttribute('data-tip', 'タグ名が無効です');
   if (!isMobile) {
-    await invalidBadge.hover();
-    await expect.poll(() => invalidBadge.evaluate((element) => getComputedStyle(element, '::before').opacity)).toBe('1');
+    await diagnosticBadge.hover();
+    await expect.poll(() => diagnosticBadge.evaluate((element) => getComputedStyle(element, '::before').opacity)).toBe('1');
   }
-  await invalidBadge.focus();
-  await expect.poll(() => invalidBadge.evaluate((element) => getComputedStyle(element, '::before').opacity)).toBe('1');
+  await diagnosticBadge.focus();
+  await expect.poll(() => diagnosticBadge.evaluate((element) => getComputedStyle(element, '::before').opacity)).toBe('1');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/tags-detail-${test.info().project.name}.png`, fullPage: true });
   await detailAuthors.click();
@@ -262,22 +260,28 @@ test('omits empty tag overlays and shows the empty state on the content page', a
   await expect(page.getByRole('region', { name: '画像 1 のタグ', exact: true })).toHaveCount(0);
   await card.click();
   await expect(page.getByText('タグはありません', { exact: true })).toBeVisible();
-  await expect(page.getByText('無効なタグ', { exact: true })).toHaveCount(0);
 });
 
-test('shows an overlay for content with only invalid tags', async ({ page }) => {
+test('shows an overlay for content with only diagnostics', async ({ page }) => {
   await mockImages(page);
-  const item = { ...content(0), invalidTags: [{ key: 'Invalid-Key', reason: 'INVALID_KEY' }] };
+  const item = { ...content(0), diagnostics: [
+    { key: 'Invalid-Key', kind: 'invalidKey' },
+    { key: 'category', kind: 'notAllowedTagValue', definition: { key: 'category', type: 'text', allowedValues: ['landscape'] } },
+    { key: 'author', kind: 'missingRequiredTag', definition: { key: 'author', type: 'text' } },
+  ] };
   await page.route('**/api/v0/contents?*', (route) => route.fulfill({ json: { items: [item] } }));
   await page.goto('/#/contents');
   await page.getByRole('link', { name: '画像 1 を開く', exact: true }).focus();
   const panel = page.getByRole('region', { name: '画像 1 のタグ', exact: true });
-  await expect(panel.locator('.badge-error')).toHaveText('Invalid-Key');
+  await expect(panel.locator('.badge-error')).toHaveText(['Invalid-Key', 'category', 'author']);
   const badge = panel.getByLabel('Invalid-Key: タグ名が無効です', { exact: true });
   await badge.focus();
   await expect(panel).toBeVisible();
   await expect(badge).toBeVisible();
   await expect.poll(() => badge.evaluate((element) => getComputedStyle(element, '::before').opacity)).toBe('1');
+  await expect(panel.getByLabel('category: タグの値がスキーマの制約を満たしていません')).toBeVisible();
+  await expect(panel.getByLabel('author: 必須タグがありません')).toBeVisible();
+  await expect(panel.getByRole('button')).toHaveCount(0);
   await expect(page.getByText('タグはありません', { exact: true })).toHaveCount(0);
 });
 

@@ -8,7 +8,7 @@ test('draft terms only run on search, with JSON conditions and matching cursors'
   await page.route('**/api/v0/contents?*', (route) => {
     const url = new URL(route.request().url());
     requests.push(url);
-    return route.fulfill({ json: { items: url.searchParams.has('condition') ? [{ id: '10000000-0000-4000-8000-000000000001', mediaType: 'image/avif', contentUrl: '/test.avif', thumbnailUrl: '/test.avif', tags: [], invalidTags: [] }] : [], ...(url.searchParams.has('condition') && !url.searchParams.has('cursor') ? { nextCursor: 'opaque+/=日本語' } : {}) } });
+    return route.fulfill({ json: { items: url.searchParams.has('condition') ? [{ id: '10000000-0000-4000-8000-000000000001', mediaType: 'image/avif', contentUrl: '/test.avif', thumbnailUrl: '/test.avif', tags: [], diagnostics: [] }] : [], ...(url.searchParams.has('condition') && !url.searchParams.has('cursor') ? { nextCursor: 'opaque+/=日本語' } : {}) } });
   });
   await page.route('**/test.avif', (route) => route.fulfill({ path: '../sample/00065786-f916-4e2c-85bc-3db5e4c0cb71.avif', contentType: 'image/avif' }));
   await page.goto('/');

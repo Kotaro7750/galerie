@@ -1,10 +1,10 @@
-import { InvalidTagBadge, TagBadge } from './TagBadge';
+import { DiagnosticBadge, TagBadge } from './TagBadge';
 import type { Content } from '../api/generated';
 
-export function ContentTags({ tags, invalidTags, onTagClick }: Pick<Content, 'tags' | 'invalidTags'> & { onTagClick?: (tag: Content['tags'][number]) => void }) {
+export function ContentTags({ tags, diagnostics, onTagClick }: Pick<Content, 'tags' | 'diagnostics'> & { onTagClick?: (tag: Content['tags'][number]) => void }) {
   return (
     <div className="text-sm">
-      {tags.length === 0 && invalidTags.length === 0 ? (
+      {tags.length === 0 && diagnostics.length === 0 ? (
         <p>タグはありません</p>
       ) : (
         <ul className="flex flex-wrap gap-2" aria-label="タグ">
@@ -13,9 +13,9 @@ export function ContentTags({ tags, invalidTags, onTagClick }: Pick<Content, 'ta
               <TagBadge tag={tag} onClick={onTagClick ? () => onTagClick(tag) : undefined} />
             </li>
           ))}
-          {invalidTags.map((tag, index) => (
-            <li key={`invalid-${tag.key}-${index}`} className="max-w-full">
-              <InvalidTagBadge tag={tag} />
+          {diagnostics.map((diagnostic, index) => (
+            <li key={`diagnostic-${diagnostic.key}-${index}`} className="max-w-full">
+              <DiagnosticBadge diagnostic={diagnostic} />
             </li>
           ))}
         </ul>

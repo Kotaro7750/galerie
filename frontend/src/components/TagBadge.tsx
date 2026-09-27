@@ -1,6 +1,6 @@
 import { Tag as TagIcon, Tags, Hash } from 'lucide-react';
-import type { InvalidTag, Tag } from '../api/generated';
-import { invalidReasons } from '../tagPresentation';
+import type { ContentDiagnostic, Tag } from '../api/generated';
+import { diagnosticReasons } from '../tagPresentation';
 
 function tagValue(tag: Tag): string {
   switch (tag.type) {
@@ -18,14 +18,14 @@ function tagLabel(tag: Tag): string {
   return tag.type === 'keyOnly' ? tag.key : `${tag.key}: ${tagValue(tag)}`;
 }
 
-export function InvalidTagBadge({ tag }: { tag: InvalidTag }) {
-  const reason = invalidReasons[tag.reason];
+export function DiagnosticBadge({ diagnostic }: { diagnostic: ContentDiagnostic }) {
+  const reason = diagnosticReasons[diagnostic.kind];
 
   return (
-    <span className="tooltip focus:tooltip-open max-w-full" data-tip={reason} tabIndex={0} aria-label={`${tag.key}: ${reason}`}>
+    <span className="tooltip focus:tooltip-open max-w-full" data-tip={reason} tabIndex={0} aria-label={`${diagnostic.key}: ${reason}`}>
       <span className="badge badge-dash badge-error h-auto min-h-7 max-w-full py-1">
         <TagIcon aria-hidden="true" className="size-4 shrink-0" strokeWidth={1.75} />
-        <span className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">{tag.key}</span>
+        <span className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">{diagnostic.key}</span>
       </span>
     </span>
   );

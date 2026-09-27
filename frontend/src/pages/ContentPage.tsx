@@ -31,7 +31,7 @@ export function ContentPage() {
     {query.isPending && <Loading />}
     {query.isError && <ErrorMessage error={query.error} onRetry={() => { void query.refetch(); }} />}
     {query.data && <>
-      <section aria-label="タグ情報"><ContentTags tags={query.data.tags} invalidTags={query.data.invalidTags} onTagClick={(tag) => {
+      <section aria-label="タグ情報"><ContentTags tags={query.data.tags} diagnostics={query.data.diagnostics} onTagClick={(tag) => {
         applyTerms([...draft, { kind: 'tagExists', key: tag.key }]);
         navigate('/contents');
       }} /></section>
