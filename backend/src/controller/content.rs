@@ -7,13 +7,11 @@ use http::header::CONTENT_TYPE;
 
 use galerie_api::models::{
     BadRequestProblem, Content, ContentNotFoundProblem, ContentPage, GetContentPathParams,
-    IntegerSetTag, IntegerTag, IntegerTagValue, InternalServerErrorProblem, InvalidTag, KeyOnlyTag,
-    MediaType, RealSetTag, RealTag, RealTagValue, SearchTerm, Tag, TextSetTag, TextTag,
-    TextTagValue,
+    InternalServerErrorProblem, SearchTerm,
 };
 
 use crate::domain::search_condition::{FileFormatPredicate, TagPredicate, Term};
-use crate::domain::tag::{SkippedTag, Tag as DomainTag};
+use crate::domain::tag_schema::TagSchema;
 use crate::usecase::{GetContentUseCase, ListContentsUseCase};
 use crate::{domain, usecase};
 
@@ -26,16 +24,19 @@ pub(crate) struct ListContentsQueryParams {
 
 #[derive(Clone)]
 pub(crate) struct ContentController {
+    tag_schema: TagSchema,
     list_contents: ListContentsUseCase,
     get_content: GetContentUseCase,
 }
 
 impl ContentController {
     pub(crate) fn new(
+        tag_schema: TagSchema,
         list_contents: usecase::ListContentsUseCase,
         get_content: usecase::GetContentUseCase,
     ) -> Self {
         ContentController {
+            tag_schema,
             list_contents,
             get_content,
         }
@@ -51,9 +52,9 @@ impl ContentController {
     pub(crate) async fn get_content(
         State(this): State<Self>,
         path: Result<Path<GetContentPathParams>, PathRejection>,
-    ) -> Result<Json<Content>, ContentControlllerError> {
+    ) -> Result<Json<Content>, ContentControllerError> {
         let id = path?.content_id.parse::<domain::ContentId>().map_err(|e| {
-            ContentControlllerError::BadRequest(format!("invalid contentId, err: {}", e))
+            ContentControllerError::BadRequest(format!("invalid contentId, err: {}", e))
         })?;
 
         let content = this.get_content.execute(id)?;
@@ -64,12 +65,12 @@ impl ContentController {
     pub(crate) async fn list_contents(
         State(this): State<Self>,
         query: Result<Query<ListContentsQueryParams>, QueryRejection>,
-    ) -> Result<Json<ContentPage>, ContentControlllerError> {
+    ) -> Result<Json<ContentPage>, ContentControllerError> {
         let query_params = query?;
 
         let limit = query_params.limit.unwrap_or(30);
         if limit == 0 || 100 < limit {
-            return Err(ContentControlllerError::BadRequest(
+            return Err(ContentControllerError::BadRequest(
                 "limit must be between 1 and 100".to_string(),
             ));
         }
@@ -77,7 +78,7 @@ impl ContentController {
         if let Some(cursor) = &query_params.cursor
             && cursor.is_empty()
         {
-            return Err(ContentControlllerError::BadRequest(
+            return Err(ContentControllerError::BadRequest(
                 "cursor must not be empty".to_string(),
             ));
         }
@@ -88,7 +89,7 @@ impl ContentController {
             .map(serde_json::from_str::<Vec<SearchTerm>>)
             .transpose()
             .map_err(|e| {
-                ContentControlllerError::BadRequest(format!("invalid search condition, err: {}", e))
+                ContentControllerError::BadRequest(format!("invalid search condition, err: {}", e))
             })?
             .unwrap_or_default();
 
@@ -103,38 +104,36 @@ impl ContentController {
                             .collect::<Vec<domain::MediaType>>()
                             .as_slice(),
                     )
-                    .ok_or(ContentControlllerError::BadRequest(
+                    .ok_or(ContentControllerError::BadRequest(
                         "invalid search condition term for media type".to_string(),
                     ))?,
                 ),
-                SearchTerm::TagExistsTerm(term) => Term::new_tag(
-                    domain::tag::TagKey::new(term.key.as_str()).ok_or(
-                        ContentControlllerError::BadRequest(
+                SearchTerm::TagExistsTerm(term) => {
+                    let key = domain::tag::TagKey::new(term.key.as_str()).ok_or(
+                        ContentControllerError::BadRequest(
                             "invalid search condition term for tag existence".to_string(),
                         ),
-                    )?,
-                    TagPredicate::Exists,
-                ),
-                SearchTerm::TagMatchTerm(term) => Term::new_tag(
-                    domain::tag::TagKey::new(term.key.as_str()).ok_or(
-                        ContentControlllerError::BadRequest(
+                    )?;
+                    if !this.tag_schema.is_tag_key_allowed(&key) {
+                        return Err(ContentControllerError::BadRequest(
+                            "invalid search condition term for tag existence".to_string(),
+                        ));
+                    }
+                    Term::new_tag(key, TagPredicate::Exists)
+                }
+                SearchTerm::TagMatchTerm(term) => {
+                    let key = domain::tag::TagKey::new(term.key.as_str()).ok_or(
+                        ContentControllerError::BadRequest(
                             "invalid search condition term for tag match".to_string(),
                         ),
-                    )?,
-                    TagPredicate::new_match(
-                        term.values
-                            .iter()
-                            .map(|v| domain::tag::TextTagValue::new(v.as_str()))
-                            .collect::<Option<Vec<domain::tag::TextTagValue>>>()
-                            .ok_or(ContentControlllerError::BadRequest(
-                                "invalid search condition term for tag match".to_string(),
-                            ))?
-                            .as_slice(),
-                    )
-                    .ok_or(ContentControlllerError::BadRequest(
-                        "invalid search condition term for tag match".to_string(),
-                    ))?,
-                ),
+                    )?;
+
+                    this.tag_schema
+                        .construct_search_term(&key, &term.values)
+                        .ok_or(ContentControllerError::BadRequest(
+                            "invalid search condition term for tag match".to_string(),
+                        ))?
+                }
             };
 
             search_terms.push(term);
@@ -155,135 +154,26 @@ impl ContentController {
     }
 }
 
-impl From<domain::MediaType> for MediaType {
-    fn from(media_type: domain::MediaType) -> Self {
-        match media_type {
-            domain::MediaType::Avif => MediaType::ImageSlashAvif,
-        }
-    }
-}
-
-impl From<MediaType> for domain::MediaType {
-    fn from(media_type: MediaType) -> Self {
-        match media_type {
-            MediaType::ImageSlashAvif => domain::MediaType::Avif,
-        }
-    }
-}
-
-impl From<domain::Content> for Content {
-    fn from(content: domain::Content) -> Self {
-        Content {
-            id: content.id().as_ref().to_string(),
-            media_type: content.media_type().into(),
-            content_url: content.content_url().to_string(),
-            thumbnail_url: content.thumbnail_url().to_string(),
-            tags: content
-                .tags()
-                .as_ref()
-                .values()
-                .map(|tag| tag.clone().into())
-                .collect(),
-            invalid_tags: content
-                .skipped_tags()
-                .as_ref()
-                .values()
-                .map(|tag| tag.clone().into())
-                .collect(),
-        }
-    }
-}
-
-impl From<DomainTag> for Tag {
-    fn from(tag: DomainTag) -> Self {
-        match tag {
-            DomainTag::KeyOnly { key } => Self::KeyOnlyTag(KeyOnlyTag {
-                key: key.as_ref().to_string(),
-                r_type: "keyOnly".to_string(),
-            }),
-            DomainTag::Text { key, value } => Self::TextTag(TextTag {
-                key: key.as_ref().to_string(),
-                value: value.as_ref().to_string(),
-                r_type: "text".to_string(),
-            }),
-            DomainTag::Integer { key, value } => Self::IntegerTag(IntegerTag {
-                key: key.as_ref().to_string(),
-                value: *value.as_ref(),
-                r_type: "integer".to_string(),
-            }),
-            DomainTag::Real { key, value } => Self::RealTag(RealTag {
-                key: key.as_ref().to_string(),
-                value: *value.as_ref(),
-                r_type: "real".to_string(),
-            }),
-            DomainTag::TextSet { key, values } => Self::TextSetTag(TextSetTag {
-                key: key.as_ref().to_string(),
-                values: values
-                    .into_iter()
-                    .map(|v| TextTagValue(v.as_ref().to_string()))
-                    .collect(),
-                r_type: "textSet".to_string(),
-            }),
-            DomainTag::IntegerSet { key, values } => Self::IntegerSetTag(IntegerSetTag {
-                key: key.as_ref().to_string(),
-                values: values
-                    .into_iter()
-                    .map(|v| IntegerTagValue(*v.as_ref()))
-                    .collect(),
-                r_type: "integerSet".to_string(),
-            }),
-            DomainTag::RealSet { key, values } => Self::RealSetTag(RealSetTag {
-                key: key.as_ref().to_string(),
-                values: values
-                    .into_iter()
-                    .map(|v| RealTagValue(*v.as_ref()))
-                    .collect(),
-                r_type: "realSet".to_string(),
-            }),
-        }
-    }
-}
-
-impl From<SkippedTag> for InvalidTag {
-    fn from(tag: SkippedTag) -> Self {
-        InvalidTag {
-            key: tag.key().to_string(),
-            // TODO Set dedicated error code for each reason
-            reason: match tag.reason() {
-                crate::domain::tag::SkippedReason::InvalidKey
-                | crate::domain::tag::SkippedReason::DuplicateKey => "INVALID_KEY".to_string(),
-                crate::domain::tag::SkippedReason::InvalidValue
-                | crate::domain::tag::SkippedReason::DuplicateSetValue => {
-                    "INVALID_VALUE".to_string()
-                }
-                crate::domain::tag::SkippedReason::UnsupportedValueType => {
-                    "UNSUPPORTED_VALUE_TYPE".to_string()
-                }
-            },
-        }
-    }
-}
-
 #[derive(Debug)]
-pub(crate) enum ContentControlllerError {
+pub(crate) enum ContentControllerError {
     BadRequest(String),
     ContentNotFound,
     InternalServerError(String),
 }
 
-impl From<PathRejection> for ContentControlllerError {
+impl From<PathRejection> for ContentControllerError {
     fn from(err: PathRejection) -> Self {
-        ContentControlllerError::BadRequest(format!("invalid path parameters, err: {}", err))
+        ContentControllerError::BadRequest(format!("invalid path parameters, err: {}", err))
     }
 }
 
-impl From<QueryRejection> for ContentControlllerError {
+impl From<QueryRejection> for ContentControllerError {
     fn from(err: QueryRejection) -> Self {
-        ContentControlllerError::BadRequest(format!("invalid query parameters, err: {}", err))
+        ContentControllerError::BadRequest(format!("invalid query parameters, err: {}", err))
     }
 }
 
-impl From<domain::Error> for ContentControlllerError {
+impl From<domain::Error> for ContentControllerError {
     fn from(err: domain::Error) -> Self {
         match err {
             domain::Error::ContentNotFound => Self::ContentNotFound,
@@ -293,7 +183,7 @@ impl From<domain::Error> for ContentControlllerError {
     }
 }
 
-impl IntoResponse for ContentControlllerError {
+impl IntoResponse for ContentControllerError {
     fn into_response(self) -> axum::response::Response {
         match self {
             Self::BadRequest(e) => (
@@ -325,6 +215,137 @@ impl IntoResponse for ContentControlllerError {
                 )),
             )
                 .into_response(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use std::sync::Arc;
+
+    use axum::body::{Body, to_bytes};
+    use http::Request;
+    use tower::ServiceExt;
+    use url::Url;
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::domain::tag::{IntegerTagValue, Tag, TagKey, TagSet};
+    use crate::infrastructure::metadata_index::InMemoryMetadataIndex;
+    use crate::port::MetadataIndex;
+
+    #[tokio::test]
+    async fn tag_exists_rejects_key_disallowed_by_schema() {
+        let schema = serde_yaml::from_str::<TagSchema>(
+            "version: '0'\nallow_additional_tags: false\noptional:\n  allowed: { type: key_only }\n",
+        )
+        .unwrap();
+        let index = Arc::new(InMemoryMetadataIndex::new());
+        let controller = ContentController::new(
+            schema,
+            ListContentsUseCase::new(index.clone()),
+            GetContentUseCase::new(index),
+        );
+
+        for (key, expected_status) in [
+            ("forbidden", StatusCode::BAD_REQUEST),
+            ("allowed", StatusCode::OK),
+        ] {
+            let condition = format!(r#"[{{"kind":"tagExists","key":"{key}"}}]"#);
+            let query = url::form_urlencoded::Serializer::new(String::new())
+                .append_pair("condition", &condition)
+                .finish();
+            let response = controller
+                .clone()
+                .router()
+                .oneshot(
+                    Request::builder()
+                        .uri(format!("/?{query}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), expected_status, "key: {key}");
+        }
+    }
+
+    #[tokio::test]
+    async fn media_type_and_tag_match_filter_contents() {
+        let schema = serde_yaml::from_str::<TagSchema>(
+            "version: '0'\nallow_additional_tags: false\noptional:\n  rating: { type: integer }\n",
+        )
+        .unwrap();
+        let id = Uuid::new_v4();
+        let content = domain::Content::new(
+            id.try_into().unwrap(),
+            domain::MediaType::Avif,
+            Url::parse("https://example.com/content.avif").unwrap(),
+            Url::parse("https://example.com/thumbnail.avif").unwrap(),
+            TagSet::new(&[Tag::Integer {
+                key: TagKey::new("rating").unwrap(),
+                value: IntegerTagValue::new(5).unwrap(),
+            }])
+            .unwrap(),
+            HashSet::new(),
+        );
+        let mut index = InMemoryMetadataIndex::new();
+        index.add_contents(&[content]).unwrap();
+        let index = Arc::new(index);
+        let controller = ContentController::new(
+            schema,
+            ListContentsUseCase::new(index.clone()),
+            GetContentUseCase::new(index),
+        );
+
+        for (condition, expected_status, expected_count) in [
+            (
+                r#"[{"kind":"mediaTypeMatch","values":["image/avif"]}]"#,
+                StatusCode::OK,
+                Some(1),
+            ),
+            (
+                r#"[{"kind":"mediaTypeMatch","values":[]}]"#,
+                StatusCode::BAD_REQUEST,
+                None,
+            ),
+            (
+                r#"[{"kind":"tagMatch","key":"rating","values":["5"]}]"#,
+                StatusCode::OK,
+                Some(1),
+            ),
+            (
+                r#"[{"kind":"tagMatch","key":"rating","values":["6"]}]"#,
+                StatusCode::OK,
+                Some(0),
+            ),
+        ] {
+            let query = url::form_urlencoded::Serializer::new(String::new())
+                .append_pair("condition", condition)
+                .finish();
+            let response = controller
+                .clone()
+                .router()
+                .oneshot(
+                    Request::builder()
+                        .uri(format!("/?{query}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), expected_status, "condition: {condition}");
+            if let Some(expected_count) = expected_count {
+                let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+                let page: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                assert_eq!(page["items"].as_array().unwrap().len(), expected_count);
+                if expected_count == 1 {
+                    assert_eq!(page["items"][0]["id"], id.to_string());
+                }
+            }
         }
     }
 }

@@ -1,0 +1,15 @@
+version: '0'
+allow_additional_tags: false
+required:
+  subjects:
+    type: text_set
+optional:
+  category:
+    type: text
+    allowed_values:
+      - landscape
+      - abstract
+  animation:
+    type: key_only
+  transparent:
+    type: key_only

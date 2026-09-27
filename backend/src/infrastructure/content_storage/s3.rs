@@ -10,7 +10,9 @@ use aws_sdk_s3::{
 use aws_smithy_async::future::pagination_stream::PaginationStream;
 
 use crate::{
-    domain::{Content, ContentId, Error, MediaType, tag::parse::parse_metadata},
+    domain::{
+        Content, ContentId, Error, MediaType, tag::parse::parse_metadata, tag_schema::TagSchema,
+    },
     port::ContentStorage,
 };
 
@@ -48,6 +50,7 @@ impl S3ContentStorage {
 impl ContentStorage for S3ContentStorage {
     async fn scan_contents(
         &self,
+        tag_schema: &TagSchema,
         limit: NonZeroU64,
         cursor: Option<ContentId>,
     ) -> Result<(Vec<Content>, Option<ContentId>), Error> {
@@ -111,7 +114,9 @@ impl ContentStorage for S3ContentStorage {
                 std::cmp::Ordering::Equal => {}
             }
 
-            if let Ok(metadata) = parse_metadata(&self.get_xmp_metadata(xmp_content_id).await?) {
+            if let Ok((tags, diagnostics)) =
+                parse_metadata(&self.get_xmp_metadata(xmp_content_id).await?, tag_schema)
+            {
                 let content_url = format!(
                     "{}/{}.{}",
                     self.content_url_base,
@@ -135,8 +140,8 @@ impl ContentStorage for S3ContentStorage {
                     media_type,
                     content_url,
                     thumbnail_url,
-                    metadata.parsed().clone(),
-                    metadata.skipped().clone(),
+                    tags,
+                    diagnostics,
                 );
 
                 contents.push(content);
@@ -277,7 +282,10 @@ mod tests {
     use aws_smithy_mocks::{RuleMode, mock, mock_client};
 
     use super::S3ContentStorage;
-    use crate::{domain::ContentId, port::ContentStorage};
+    use crate::{
+        domain::{ContentId, tag_schema::TagSchema},
+        port::ContentStorage,
+    };
 
     const BUCKET: &str = "test-bucket";
     const XMP_PREFIX: &str = "metadata";
@@ -390,7 +398,7 @@ mod tests {
         );
 
         let (contents, next_cursor) = storage(client)
-            .scan_contents(NonZeroU64::new(10).unwrap(), None)
+            .scan_contents(&TagSchema::default(), NonZeroU64::new(10).unwrap(), None)
             .await
             .unwrap();
 

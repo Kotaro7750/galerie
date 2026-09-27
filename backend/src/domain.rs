@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::str::FromStr;
 
 use mime::Mime;
@@ -5,7 +6,8 @@ use url::Url;
 use uuid::Uuid;
 use uuid::fmt::Hyphenated;
 
-use crate::domain::tag::{SkippedTagSet, TagSet};
+use crate::domain::tag::{TagKey, TagSet};
+use crate::domain::tag_schema::TagDefinition;
 
 pub(crate) mod content_access;
 pub(crate) mod search_condition;
@@ -87,7 +89,7 @@ pub(crate) struct Content {
     content_url: Url,
     thumbnail_url: Url,
     tags: TagSet,
-    skipped_tags: SkippedTagSet,
+    diagnostics: HashSet<ContentDiagnostic>,
 }
 
 impl Content {
@@ -97,7 +99,7 @@ impl Content {
         content_url: Url,
         thumbnail_url: Url,
         tags: TagSet,
-        skipped_tags: SkippedTagSet,
+        diagnostics: HashSet<ContentDiagnostic>,
     ) -> Self {
         Self {
             id,
@@ -105,7 +107,7 @@ impl Content {
             content_url,
             thumbnail_url,
             tags,
-            skipped_tags,
+            diagnostics,
         }
     }
 
@@ -129,8 +131,8 @@ impl Content {
         &self.tags
     }
 
-    pub(crate) fn skipped_tags(&self) -> &SkippedTagSet {
-        &self.skipped_tags
+    pub(crate) fn diagnostics(&self) -> &HashSet<ContentDiagnostic> {
+        &self.diagnostics
     }
 }
 
@@ -151,5 +153,52 @@ impl PartialOrd for Content {
 impl Ord for Content {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.id.cmp(&other.id)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) enum ContentDiagnostic {
+    InvalidKey {
+        key: String,
+    },
+    DuplicateKey {
+        key: TagKey,
+    },
+    UnsupportedXmpValueType {
+        key: TagKey,
+    },
+    NotAllowedTagKey {
+        key: TagKey,
+    },
+    UnparseableTagValue {
+        key: TagKey,
+        definition: Option<TagDefinition>,
+    },
+    DuplicateSetValue {
+        key: TagKey,
+    },
+    NotAllowedTagValue {
+        key: TagKey,
+        definition: TagDefinition,
+    },
+    MissingRequiredTag {
+        key: TagKey,
+        definition: TagDefinition,
+    },
+}
+
+impl ContentDiagnostic {
+    /// Strips the definition from the `UnparseableTagValue` variant, if present.
+    /// This is useful for parsing with dummy fallback definition
+    fn strip_definition_for_unparseable_tag_value(self) -> Self {
+        match self {
+            ContentDiagnostic::UnparseableTagValue { key, definition: _ } => {
+                Self::UnparseableTagValue {
+                    key,
+                    definition: None,
+                }
+            }
+            _ => self,
+        }
     }
 }

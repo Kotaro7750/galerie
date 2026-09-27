@@ -1,5 +1,14 @@
 [tools]
 rust = "1.98"
+"cargo:cargo-llvm-cov" = "latest"
+
+[tasks.test]
+dir = "."
+run = "cargo test --all --all-features --workspace --locked --color always"
+
+[tasks.test-coverage]
+dir = "."
+run = "cargo llvm-cov --html --open"
 
 [tasks.dev]
 dir = "."
@@ -12,6 +21,8 @@ GALERIE_CONTENT_STORAGE__FILE_SYSTEM__CONTENT_ROOT_PATH = "../sample"
 GALERIE_CONTENT_STORAGE__FILE_SYSTEM__CONTENT_URL_BASE = "http://localhost:8000"
 # ローカル開発ではサムネイルにも同じサンプル画像を使用する。
 GALERIE_CONTENT_STORAGE__FILE_SYSTEM__THUMBNAIL_URL_BASE = "http://localhost:8000"
+GALERIE_TAG_SCHEMA__MODE = { default = "FileSystem" }
+GALERIE_TAG_SCHEMA__FILE_SYSTEM__FILE_PATH = "../sample/tag_schema.yaml"
 
 [tasks."openapi:generate"]
 # OpenAPI Generator 7.24.0のrust-axumでは、名前付き整数スキーマの再マッピング時にi64の型情報が失われるため明示的に指定する

@@ -1,5 +1,6 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
+use ordered_float::NotNan;
 use quick_xml::{
     events::Event,
     name::{Namespace, ResolveResult},
@@ -8,7 +9,7 @@ use quick_xml::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use unicode_xid::UnicodeXID;
-use xmp_toolkit::{IterOptions, XmpMeta, XmpProperty, XmpValue};
+use xmp_toolkit::{IterOptions, XmpMeta, XmpProperty};
 
 pub(crate) mod parse;
 
@@ -43,7 +44,7 @@ pub(crate) enum Tag {
     #[allow(dead_code)]
     RealSet {
         key: TagKey,
-        values: BTreeSet<RealTagValue>, // Due to floating point comparison issues, we use BTreeSet instead of HashSet for RealTagValue
+        values: HashSet<RealTagValue>,
     },
 }
 
@@ -65,6 +66,24 @@ impl Tag {
         match self {
             Self::Text { key: _, value } => value == text_value,
             Self::TextSet { key: _, values } => values.contains(text_value),
+            _ => false,
+        }
+    }
+
+    /// Check if the tag contains the specified integer value.
+    pub(crate) fn contain_integer_value(&self, integer_value: &IntegerTagValue) -> bool {
+        match self {
+            Self::Integer { key: _, value } => value == integer_value,
+            Self::IntegerSet { key: _, values } => values.contains(integer_value),
+            _ => false,
+        }
+    }
+
+    /// Check if the tag contains the specified real value.
+    pub(crate) fn contain_real_value(&self, real_value: &RealTagValue) -> bool {
+        match self {
+            Self::Real { key: _, value } => value == real_value,
+            Self::RealSet { key: _, values } => values.contains(real_value),
             _ => false,
         }
     }
@@ -133,13 +152,13 @@ impl From<TagKey> for String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 #[serde(try_from = "String", into = "String")]
 pub(crate) struct TextTagValue(String);
 
 impl TextTagValue {
     pub(crate) fn new(value: &str) -> Option<Self> {
-        if !value.is_empty() && unicode_normalization::is_nfc(value) {
+        if (1..=255).contains(&value.chars().count()) && unicode_normalization::is_nfc(value) {
             Some(Self(value.to_string()))
         } else {
             None
@@ -176,8 +195,7 @@ impl From<TextTagValue> for String {
 pub(crate) struct IntegerTagValue(i64);
 
 impl IntegerTagValue {
-    #[allow(dead_code)]
-    fn new(value: i64) -> Option<Self> {
+    pub(crate) fn new(value: i64) -> Option<Self> {
         if -(2_i64.pow(53) - 1) <= value && value < 2_i64.pow(53) {
             Some(Self(value))
         } else {
@@ -209,14 +227,17 @@ impl AsRef<i64> for IntegerTagValue {
     }
 }
 
-#[derive(Debug, Clone, PartialOrd, PartialEq, Deserialize, Serialize)]
-#[serde(from = "f64", into = "f64")]
-pub(crate) struct RealTagValue(f64);
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(try_from = "f64", into = "f64")]
+pub(crate) struct RealTagValue(NotNan<f64>);
 
 impl RealTagValue {
-    #[allow(dead_code)]
-    fn new(value: f64) -> Self {
-        Self(value)
+    pub(crate) fn new(value: f64) -> Option<Self> {
+        if !value.is_finite() {
+            return None;
+        }
+
+        NotNan::new(value).ok().map(Self)
     }
 }
 
@@ -226,31 +247,20 @@ impl AsRef<f64> for RealTagValue {
     }
 }
 
-impl From<f64> for RealTagValue {
-    fn from(value: f64) -> Self {
-        Self(value)
+impl TryFrom<f64> for RealTagValue {
+    type Error = String;
+
+    fn try_from(value: f64) -> Result<Self, Self::Error> {
+        match Self::new(value) {
+            Some(num) => Ok(num),
+            None => Err(format!("Invalid real value: {}", value)),
+        }
     }
 }
 
 impl From<RealTagValue> for f64 {
     fn from(value: RealTagValue) -> Self {
-        value.0
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct Metadata {
-    parsed: TagSet,
-    skipped: SkippedTagSet,
-}
-
-impl Metadata {
-    pub(crate) fn parsed(&self) -> &TagSet {
-        &self.parsed
-    }
-
-    pub(crate) fn skipped(&self) -> &SkippedTagSet {
-        &self.skipped
+        *value.0.as_ref()
     }
 }
 
@@ -281,62 +291,6 @@ impl TagSet {
 
 impl AsRef<HashMap<TagKey, Tag>> for TagSet {
     fn as_ref(&self) -> &HashMap<TagKey, Tag> {
-        &self.tags
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-/// Represents a tag that was skipped during parsing, along with the reason for skipping.
-pub(crate) struct SkippedTag {
-    key: String,
-    reason: SkippedReason,
-}
-
-impl SkippedTag {
-    pub(crate) fn key(&self) -> &str {
-        &self.key
-    }
-
-    pub(crate) fn reason(&self) -> &SkippedReason {
-        &self.reason
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum SkippedReason {
-    InvalidKey,
-    DuplicateKey,
-    UnsupportedValueType,
-    InvalidValue,
-    DuplicateSetValue,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-/// Represents a set of skipped tags, ensuring uniqueness of tag keys.
-pub(crate) struct SkippedTagSet {
-    tags: HashMap<String, SkippedTag>,
-}
-
-impl SkippedTagSet {
-    pub(crate) fn new(tags: &[SkippedTag]) -> Option<Self> {
-        let mut set = HashSet::new();
-        for tag in tags {
-            if !set.insert(tag.key.clone()) {
-                return None;
-            }
-        }
-
-        Some(Self {
-            tags: tags
-                .iter()
-                .map(|tag| (tag.key.clone(), tag.clone()))
-                .collect(),
-        })
-    }
-}
-
-impl AsRef<HashMap<String, SkippedTag>> for SkippedTagSet {
-    fn as_ref(&self) -> &HashMap<String, SkippedTag> {
         &self.tags
     }
 }
@@ -397,11 +351,27 @@ mod tests {
     }
 
     #[test]
+    fn text_tag_value_length_limit() {
+        assert!(TextTagValue::new(&"あ".repeat(u8::MAX as usize)).is_some());
+        assert!(TextTagValue::new(&"あ".repeat(u8::MAX as usize + 1)).is_none());
+    }
+
+    #[test]
     fn text_integer_tag_value_range() {
         assert!(IntegerTagValue::new(-(2_i64.pow(53) - 1)).is_some());
         assert!(IntegerTagValue::new(2_i64.pow(53) - 1).is_some());
         assert!(IntegerTagValue::new(-(2_i64.pow(53))).is_none());
         assert!(IntegerTagValue::new(2_i64.pow(53)).is_none());
+    }
+
+    #[test]
+    fn real_tag_value_requires_finite_number() {
+        assert!(RealTagValue::new(f64::MAX).is_some());
+        assert!(RealTagValue::new(f64::MIN).is_some());
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(RealTagValue::new(value).is_none());
+            assert!(RealTagValue::try_from(value).is_err());
+        }
     }
 
     #[test]

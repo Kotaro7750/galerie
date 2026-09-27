@@ -326,15 +326,15 @@ pub struct Content {
     )]
     pub thumbnail_url: String,
 
-    /// 有効なタグ。該当するタグがなければ空配列を返す。 同一コンテンツ内のタグのkeyは一意とし、値や型が異なる場合も同じkeyを持つタグの重複は認めない。 
+    /// 有効なフォーマットかつスキーマが存在する場合にはスキーマと整合するタグ。 該当するタグがなければ空配列を返す。 同一コンテンツ内のタグのkeyは一意とし、値や型が異なる場合も同じkeyを持つタグの重複は認めない。 
     #[serde(rename = "tags")]
           #[validate(nested)]
     pub tags: Vec<models::Tag>,
 
-    /// 無効なタグ。無効となった簡単な理由を含む。該当するタグがなければ空配列を返す
-    #[serde(rename = "invalidTags")]
+    /// コンテンツのメタデータに関する診断情報。異常がない場合は空配列を返す。 単一タグに関する異常は同じkeyにつき最大1件とする。 異常のあるタグはtagsに含めず、タグ検索の対象にも含めない。  診断の種類（`kind`）: - `invalidKey`: XMPプロパティ名がタグキーの条件を満たさない - `duplicateKey`: 同じタグキーのXMPプロパティが複数存在する - `unsupportedXmpValueType`: XMPの値がタグとして対応しない形式である - `notAllowedTagKey`: タグキーがタグスキーマ上許容されない - `unparseableTagValue`: XMPの値をスキーマ定義またはフォールバックの型として解釈できない - `duplicateSetValue`: セットの要素値を解釈した結果、同じ値が複数存在する - `notAllowedTagValue`: 解釈したタグの値がスキーマの制約を満たさない - `missingRequiredTag`: 有効なタグの中に必須タグが存在しない  `definition`フィールドを含む場合、タグスキーマに記載されたタグ定義を示す。 
+    #[serde(rename = "diagnostics")]
           #[validate(nested)]
-    pub invalid_tags: Vec<models::InvalidTag>,
+    pub diagnostics: Vec<models::ContentDiagnostic>,
 
 }
 
@@ -351,14 +351,14 @@ lazy_static::lazy_static! {
 
 impl Content {
     #[allow(clippy::new_without_default, clippy::too_many_arguments)]
-    pub fn new(id: String, media_type: models::MediaType, content_url: String, thumbnail_url: String, tags: Vec<models::Tag>, invalid_tags: Vec<models::InvalidTag>, ) -> Content {
+    pub fn new(id: String, media_type: models::MediaType, content_url: String, thumbnail_url: String, tags: Vec<models::Tag>, diagnostics: Vec<models::ContentDiagnostic>, ) -> Content {
         Content {
  id,
  media_type,
  content_url,
  thumbnail_url,
  tags,
- invalid_tags,
+ diagnostics,
         }
     }
 }
@@ -385,7 +385,7 @@ impl std::fmt::Display for Content {
 
             // Skipping tags in query parameter serialization
 
-            // Skipping invalidTags in query parameter serialization
+            // Skipping diagnostics in query parameter serialization
 
         ];
 
@@ -409,7 +409,7 @@ impl std::str::FromStr for Content {
             pub content_url: Vec<String>,
             pub thumbnail_url: Vec<String>,
             pub tags: Vec<Vec<models::Tag>>,
-            pub invalid_tags: Vec<Vec<models::InvalidTag>>,
+            pub diagnostics: Vec<Vec<models::ContentDiagnostic>>,
         }
 
         let mut intermediate_rep = IntermediateRep::default();
@@ -436,7 +436,7 @@ impl std::str::FromStr for Content {
                     #[allow(clippy::redundant_clone)]
                     "thumbnailUrl" => intermediate_rep.thumbnail_url.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     "tags" => return std::result::Result::Err("Parsing a container in this style is not supported in Content".to_string()),
-                    "invalidTags" => return std::result::Result::Err("Parsing a container in this style is not supported in Content".to_string()),
+                    "diagnostics" => return std::result::Result::Err("Parsing a container in this style is not supported in Content".to_string()),
                     _ => return std::result::Result::Err("Unexpected key while parsing Content".to_string())
                 }
             }
@@ -452,7 +452,7 @@ impl std::str::FromStr for Content {
             content_url: intermediate_rep.content_url.into_iter().next().ok_or_else(|| "contentUrl missing in Content".to_string())?,
             thumbnail_url: intermediate_rep.thumbnail_url.into_iter().next().ok_or_else(|| "thumbnailUrl missing in Content".to_string())?,
             tags: intermediate_rep.tags.into_iter().next().ok_or_else(|| "tags missing in Content".to_string())?,
-            invalid_tags: intermediate_rep.invalid_tags.into_iter().next().ok_or_else(|| "invalidTags missing in Content".to_string())?,
+            diagnostics: intermediate_rep.diagnostics.into_iter().next().ok_or_else(|| "diagnostics missing in Content".to_string())?,
         })
     }
 }
@@ -604,6 +604,93 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<ContentAcces
         }
     }
 }
+
+
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+pub enum ContentDiagnostic {
+    InvalidKeyDiagnostic(models::InvalidKeyDiagnostic),
+    DuplicateKeyDiagnostic(models::DuplicateKeyDiagnostic),
+    UnsupportedXmpValueTypeDiagnostic(models::UnsupportedXmpValueTypeDiagnostic),
+    NotAllowedTagKeyDiagnostic(models::NotAllowedTagKeyDiagnostic),
+    UnparseableTagValueDiagnostic(models::UnparseableTagValueDiagnostic),
+    DuplicateSetValueDiagnostic(models::DuplicateSetValueDiagnostic),
+    NotAllowedTagValueDiagnostic(models::NotAllowedTagValueDiagnostic),
+    MissingRequiredTagDiagnostic(models::MissingRequiredTagDiagnostic),
+}
+
+impl validator::Validate for ContentDiagnostic
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        match self {
+            Self::InvalidKeyDiagnostic(v) => v.validate(),
+            Self::DuplicateKeyDiagnostic(v) => v.validate(),
+            Self::UnsupportedXmpValueTypeDiagnostic(v) => v.validate(),
+            Self::NotAllowedTagKeyDiagnostic(v) => v.validate(),
+            Self::UnparseableTagValueDiagnostic(v) => v.validate(),
+            Self::DuplicateSetValueDiagnostic(v) => v.validate(),
+            Self::NotAllowedTagValueDiagnostic(v) => v.validate(),
+            Self::MissingRequiredTagDiagnostic(v) => v.validate(),
+        }
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a ContentDiagnostic value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for ContentDiagnostic {
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        serde_json::from_str(s)
+    }
+}
+
+
+impl From<models::InvalidKeyDiagnostic> for ContentDiagnostic {
+    fn from(value: models::InvalidKeyDiagnostic) -> Self {
+        Self::InvalidKeyDiagnostic(value)
+    }
+}
+impl From<models::DuplicateKeyDiagnostic> for ContentDiagnostic {
+    fn from(value: models::DuplicateKeyDiagnostic) -> Self {
+        Self::DuplicateKeyDiagnostic(value)
+    }
+}
+impl From<models::UnsupportedXmpValueTypeDiagnostic> for ContentDiagnostic {
+    fn from(value: models::UnsupportedXmpValueTypeDiagnostic) -> Self {
+        Self::UnsupportedXmpValueTypeDiagnostic(value)
+    }
+}
+impl From<models::NotAllowedTagKeyDiagnostic> for ContentDiagnostic {
+    fn from(value: models::NotAllowedTagKeyDiagnostic) -> Self {
+        Self::NotAllowedTagKeyDiagnostic(value)
+    }
+}
+impl From<models::UnparseableTagValueDiagnostic> for ContentDiagnostic {
+    fn from(value: models::UnparseableTagValueDiagnostic) -> Self {
+        Self::UnparseableTagValueDiagnostic(value)
+    }
+}
+impl From<models::DuplicateSetValueDiagnostic> for ContentDiagnostic {
+    fn from(value: models::DuplicateSetValueDiagnostic) -> Self {
+        Self::DuplicateSetValueDiagnostic(value)
+    }
+}
+impl From<models::NotAllowedTagValueDiagnostic> for ContentDiagnostic {
+    fn from(value: models::NotAllowedTagValueDiagnostic) -> Self {
+        Self::NotAllowedTagValueDiagnostic(value)
+    }
+}
+impl From<models::MissingRequiredTagDiagnostic> for ContentDiagnostic {
+    fn from(value: models::MissingRequiredTagDiagnostic) -> Self {
+        Self::MissingRequiredTagDiagnostic(value)
+    }
+}
+
+
 
 
 
@@ -979,6 +1066,346 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<ContentPage>
 
 
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct DuplicateKeyDiagnostic {
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+    #[serde(rename = "kind")]
+          #[validate(nested)]
+    pub kind: models::DuplicateKeyDiagnosticKind,
+
+}
+
+
+
+impl DuplicateKeyDiagnostic {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(key: String, kind: models::DuplicateKeyDiagnosticKind, ) -> DuplicateKeyDiagnostic {
+        DuplicateKeyDiagnostic {
+ key,
+ kind,
+        }
+    }
+}
+
+/// Converts the DuplicateKeyDiagnostic value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for DuplicateKeyDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+            // Skipping kind in query parameter serialization
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a DuplicateKeyDiagnostic value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for DuplicateKeyDiagnostic {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub key: Vec<String>,
+            pub kind: Vec<models::DuplicateKeyDiagnosticKind>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing DuplicateKeyDiagnostic".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "kind" => intermediate_rep.kind.push(<models::DuplicateKeyDiagnosticKind as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    _ => return std::result::Result::Err("Unexpected key while parsing DuplicateKeyDiagnostic".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(DuplicateKeyDiagnostic {
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in DuplicateKeyDiagnostic".to_string())?,
+            kind: intermediate_rep.kind.into_iter().next().ok_or_else(|| "kind missing in DuplicateKeyDiagnostic".to_string())?,
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<DuplicateKeyDiagnostic> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<DuplicateKeyDiagnostic>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<DuplicateKeyDiagnostic>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for DuplicateKeyDiagnostic - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<DuplicateKeyDiagnostic> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <DuplicateKeyDiagnostic as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into DuplicateKeyDiagnostic - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum DuplicateKeyDiagnosticKind {
+    #[serde(rename = "duplicateKey")]
+    DuplicateKey,
+}
+
+impl validator::Validate for DuplicateKeyDiagnosticKind
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for DuplicateKeyDiagnosticKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            DuplicateKeyDiagnosticKind::DuplicateKey => write!(f, "duplicateKey"),
+        }
+    }
+}
+
+impl std::str::FromStr for DuplicateKeyDiagnosticKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "duplicateKey" => std::result::Result::Ok(DuplicateKeyDiagnosticKind::DuplicateKey),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct DuplicateSetValueDiagnostic {
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+    #[serde(rename = "kind")]
+          #[validate(nested)]
+    pub kind: models::DuplicateSetValueDiagnosticKind,
+
+}
+
+
+
+impl DuplicateSetValueDiagnostic {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(key: String, kind: models::DuplicateSetValueDiagnosticKind, ) -> DuplicateSetValueDiagnostic {
+        DuplicateSetValueDiagnostic {
+ key,
+ kind,
+        }
+    }
+}
+
+/// Converts the DuplicateSetValueDiagnostic value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for DuplicateSetValueDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+            // Skipping kind in query parameter serialization
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a DuplicateSetValueDiagnostic value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for DuplicateSetValueDiagnostic {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub key: Vec<String>,
+            pub kind: Vec<models::DuplicateSetValueDiagnosticKind>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing DuplicateSetValueDiagnostic".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "kind" => intermediate_rep.kind.push(<models::DuplicateSetValueDiagnosticKind as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    _ => return std::result::Result::Err("Unexpected key while parsing DuplicateSetValueDiagnostic".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(DuplicateSetValueDiagnostic {
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in DuplicateSetValueDiagnostic".to_string())?,
+            kind: intermediate_rep.kind.into_iter().next().ok_or_else(|| "kind missing in DuplicateSetValueDiagnostic".to_string())?,
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<DuplicateSetValueDiagnostic> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<DuplicateSetValueDiagnostic>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<DuplicateSetValueDiagnostic>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for DuplicateSetValueDiagnostic - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<DuplicateSetValueDiagnostic> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <DuplicateSetValueDiagnostic as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into DuplicateSetValueDiagnostic - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum DuplicateSetValueDiagnosticKind {
+    #[serde(rename = "duplicateSetValue")]
+    DuplicateSetValue,
+}
+
+impl validator::Validate for DuplicateSetValueDiagnosticKind
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for DuplicateSetValueDiagnosticKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            DuplicateSetValueDiagnosticKind::DuplicateSetValue => write!(f, "duplicateSetValue"),
+        }
+    }
+}
+
+impl std::str::FromStr for DuplicateSetValueDiagnosticKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "duplicateSetValue" => std::result::Result::Ok(DuplicateSetValueDiagnosticKind::DuplicateSetValue),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
+
+
 /// Integer値からなる集合のタグ。要素は順序を持たず、値の重複は許可しない。JSONでは配列として表現する
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
@@ -991,10 +1418,9 @@ pub struct IntegerSetTag {
     )]
     pub key: String,
 
-    /// Note: inline enums are not fully supported by openapi-generator
     #[serde(rename = "type")]
-          #[validate(custom(function = "check_xss_string"))]
-    pub r_type: String,
+          #[validate(nested)]
+    pub r_type: models::IntegerSetTagType,
 
     #[serde(rename = "values")]
     #[validate(
@@ -1008,7 +1434,7 @@ pub struct IntegerSetTag {
 
 impl IntegerSetTag {
     #[allow(clippy::new_without_default, clippy::too_many_arguments)]
-    pub fn new(key: String, r_type: String, values: Vec<models::IntegerTagValue>, ) -> IntegerSetTag {
+    pub fn new(key: String, r_type: models::IntegerSetTagType, values: Vec<models::IntegerTagValue>, ) -> IntegerSetTag {
         IntegerSetTag {
  key,
  r_type,
@@ -1027,9 +1453,7 @@ impl std::fmt::Display for IntegerSetTag {
             Some("key".to_string()),
             Some(self.key.to_string()),
 
-
-            Some("type".to_string()),
-            Some(self.r_type.to_string()),
+            // Skipping type in query parameter serialization
 
 
             Some("values".to_string()),
@@ -1053,7 +1477,7 @@ impl std::str::FromStr for IntegerSetTag {
         #[allow(dead_code)]
         struct IntermediateRep {
             pub key: Vec<String>,
-            pub r_type: Vec<String>,
+            pub r_type: Vec<models::IntegerSetTagType>,
             pub values: Vec<Vec<models::IntegerTagValue>>,
         }
 
@@ -1075,7 +1499,7 @@ impl std::str::FromStr for IntegerSetTag {
                     #[allow(clippy::redundant_clone)]
                     "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     #[allow(clippy::redundant_clone)]
-                    "type" => intermediate_rep.r_type.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "type" => intermediate_rep.r_type.push(<models::IntegerSetTagType as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     "values" => return std::result::Result::Err("Parsing a container in this style is not supported in IntegerSetTag".to_string()),
                     _ => return std::result::Result::Err("Unexpected key while parsing IntegerSetTag".to_string())
                 }
@@ -1128,6 +1552,238 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<IntegerSetTa
 
 
 
+/// Integer値からなる集合の定義。allowedValuesとmin・maxは同時に指定しない
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct IntegerSetTagDefinition {
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+    #[serde(rename = "type")]
+          #[validate(nested)]
+    pub r_type: models::IntegerSetTagType,
+
+    /// JavaScriptのnumberで安全に扱える整数範囲（-(2^53 - 1)以上、2^53 - 1以下）に限定されたJSON数値 
+    #[serde(rename = "min")]
+    #[validate(
+            range(min = -9007199254740991i64, max = 9007199254740991i64),
+    )]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub min: Option<i64>,
+
+    /// JavaScriptのnumberで安全に扱える整数範囲（-(2^53 - 1)以上、2^53 - 1以下）に限定されたJSON数値 
+    #[serde(rename = "max")]
+    #[validate(
+            range(min = -9007199254740991i64, max = 9007199254740991i64),
+    )]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub max: Option<i64>,
+
+    #[serde(rename = "allowedValues")]
+    #[validate(
+          nested,
+    )]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub allowed_values: Option<Vec<models::IntegerTagValue>>,
+
+}
+
+
+
+impl IntegerSetTagDefinition {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(key: String, r_type: models::IntegerSetTagType, ) -> IntegerSetTagDefinition {
+        IntegerSetTagDefinition {
+ key,
+ r_type,
+ min: None,
+ max: None,
+ allowed_values: None,
+        }
+    }
+}
+
+/// Converts the IntegerSetTagDefinition value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for IntegerSetTagDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+            // Skipping type in query parameter serialization
+
+
+            self.min.as_ref().map(|min| {
+                [
+                    "min".to_string(),
+                    min.to_string(),
+                ].join(",")
+            }),
+
+
+            self.max.as_ref().map(|max| {
+                [
+                    "max".to_string(),
+                    max.to_string(),
+                ].join(",")
+            }),
+
+
+            self.allowed_values.as_ref().map(|allowed_values| {
+                [
+                    "allowedValues".to_string(),
+                    allowed_values.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","),
+                ].join(",")
+            }),
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a IntegerSetTagDefinition value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for IntegerSetTagDefinition {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub key: Vec<String>,
+            pub r_type: Vec<models::IntegerSetTagType>,
+            pub min: Vec<i64>,
+            pub max: Vec<i64>,
+            pub allowed_values: Vec<Vec<models::IntegerTagValue>>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing IntegerSetTagDefinition".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "type" => intermediate_rep.r_type.push(<models::IntegerSetTagType as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "min" => intermediate_rep.min.push(<i64 as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "max" => intermediate_rep.max.push(<i64 as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "allowedValues" => return std::result::Result::Err("Parsing a container in this style is not supported in IntegerSetTagDefinition".to_string()),
+                    _ => return std::result::Result::Err("Unexpected key while parsing IntegerSetTagDefinition".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(IntegerSetTagDefinition {
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in IntegerSetTagDefinition".to_string())?,
+            r_type: intermediate_rep.r_type.into_iter().next().ok_or_else(|| "type missing in IntegerSetTagDefinition".to_string())?,
+            min: intermediate_rep.min.into_iter().next(),
+            max: intermediate_rep.max.into_iter().next(),
+            allowed_values: intermediate_rep.allowed_values.into_iter().next(),
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<IntegerSetTagDefinition> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<IntegerSetTagDefinition>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<IntegerSetTagDefinition>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for IntegerSetTagDefinition - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<IntegerSetTagDefinition> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <IntegerSetTagDefinition as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into IntegerSetTagDefinition - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum IntegerSetTagType {
+    #[serde(rename = "integerSet")]
+    IntegerSet,
+}
+
+impl validator::Validate for IntegerSetTagType
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for IntegerSetTagType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            IntegerSetTagType::IntegerSet => write!(f, "integerSet"),
+        }
+    }
+}
+
+impl std::str::FromStr for IntegerSetTagType {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "integerSet" => std::result::Result::Ok(IntegerSetTagType::IntegerSet),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
+
+
 /// 単一のInteger値を持つタグ
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
@@ -1140,10 +1796,9 @@ pub struct IntegerTag {
     )]
     pub key: String,
 
-    /// Note: inline enums are not fully supported by openapi-generator
     #[serde(rename = "type")]
-          #[validate(custom(function = "check_xss_string"))]
-    pub r_type: String,
+          #[validate(nested)]
+    pub r_type: models::IntegerTagType,
 
     /// JavaScriptのnumberで安全に扱える整数範囲（-(2^53 - 1)以上、2^53 - 1以下）に限定されたJSON数値 
     #[serde(rename = "value")]
@@ -1158,7 +1813,7 @@ pub struct IntegerTag {
 
 impl IntegerTag {
     #[allow(clippy::new_without_default, clippy::too_many_arguments)]
-    pub fn new(key: String, r_type: String, value: i64, ) -> IntegerTag {
+    pub fn new(key: String, r_type: models::IntegerTagType, value: i64, ) -> IntegerTag {
         IntegerTag {
  key,
  r_type,
@@ -1177,9 +1832,7 @@ impl std::fmt::Display for IntegerTag {
             Some("key".to_string()),
             Some(self.key.to_string()),
 
-
-            Some("type".to_string()),
-            Some(self.r_type.to_string()),
+            // Skipping type in query parameter serialization
 
 
             Some("value".to_string()),
@@ -1203,7 +1856,7 @@ impl std::str::FromStr for IntegerTag {
         #[allow(dead_code)]
         struct IntermediateRep {
             pub key: Vec<String>,
-            pub r_type: Vec<String>,
+            pub r_type: Vec<models::IntegerTagType>,
             pub value: Vec<i64>,
         }
 
@@ -1225,7 +1878,7 @@ impl std::str::FromStr for IntegerTag {
                     #[allow(clippy::redundant_clone)]
                     "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     #[allow(clippy::redundant_clone)]
-                    "type" => intermediate_rep.r_type.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "type" => intermediate_rep.r_type.push(<models::IntegerTagType as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     #[allow(clippy::redundant_clone)]
                     "value" => intermediate_rep.value.push(<i64 as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     _ => return std::result::Result::Err("Unexpected key while parsing IntegerTag".to_string())
@@ -1277,6 +1930,238 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<IntegerTag> 
     }
 }
 
+
+
+/// 単一のInteger値の定義。allowedValuesとmin・maxは同時に指定しない
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct IntegerTagDefinition {
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+    #[serde(rename = "type")]
+          #[validate(nested)]
+    pub r_type: models::IntegerTagType,
+
+    /// JavaScriptのnumberで安全に扱える整数範囲（-(2^53 - 1)以上、2^53 - 1以下）に限定されたJSON数値 
+    #[serde(rename = "min")]
+    #[validate(
+            range(min = -9007199254740991i64, max = 9007199254740991i64),
+    )]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub min: Option<i64>,
+
+    /// JavaScriptのnumberで安全に扱える整数範囲（-(2^53 - 1)以上、2^53 - 1以下）に限定されたJSON数値 
+    #[serde(rename = "max")]
+    #[validate(
+            range(min = -9007199254740991i64, max = 9007199254740991i64),
+    )]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub max: Option<i64>,
+
+    #[serde(rename = "allowedValues")]
+    #[validate(
+          nested,
+    )]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub allowed_values: Option<Vec<models::IntegerTagValue>>,
+
+}
+
+
+
+impl IntegerTagDefinition {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(key: String, r_type: models::IntegerTagType, ) -> IntegerTagDefinition {
+        IntegerTagDefinition {
+ key,
+ r_type,
+ min: None,
+ max: None,
+ allowed_values: None,
+        }
+    }
+}
+
+/// Converts the IntegerTagDefinition value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for IntegerTagDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+            // Skipping type in query parameter serialization
+
+
+            self.min.as_ref().map(|min| {
+                [
+                    "min".to_string(),
+                    min.to_string(),
+                ].join(",")
+            }),
+
+
+            self.max.as_ref().map(|max| {
+                [
+                    "max".to_string(),
+                    max.to_string(),
+                ].join(",")
+            }),
+
+
+            self.allowed_values.as_ref().map(|allowed_values| {
+                [
+                    "allowedValues".to_string(),
+                    allowed_values.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","),
+                ].join(",")
+            }),
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a IntegerTagDefinition value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for IntegerTagDefinition {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub key: Vec<String>,
+            pub r_type: Vec<models::IntegerTagType>,
+            pub min: Vec<i64>,
+            pub max: Vec<i64>,
+            pub allowed_values: Vec<Vec<models::IntegerTagValue>>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing IntegerTagDefinition".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "type" => intermediate_rep.r_type.push(<models::IntegerTagType as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "min" => intermediate_rep.min.push(<i64 as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "max" => intermediate_rep.max.push(<i64 as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "allowedValues" => return std::result::Result::Err("Parsing a container in this style is not supported in IntegerTagDefinition".to_string()),
+                    _ => return std::result::Result::Err("Unexpected key while parsing IntegerTagDefinition".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(IntegerTagDefinition {
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in IntegerTagDefinition".to_string())?,
+            r_type: intermediate_rep.r_type.into_iter().next().ok_or_else(|| "type missing in IntegerTagDefinition".to_string())?,
+            min: intermediate_rep.min.into_iter().next(),
+            max: intermediate_rep.max.into_iter().next(),
+            allowed_values: intermediate_rep.allowed_values.into_iter().next(),
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<IntegerTagDefinition> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<IntegerTagDefinition>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<IntegerTagDefinition>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for IntegerTagDefinition - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<IntegerTagDefinition> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <IntegerTagDefinition as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into IntegerTagDefinition - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum IntegerTagType {
+    #[serde(rename = "integer")]
+    Integer,
+}
+
+impl validator::Validate for IntegerTagType
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for IntegerTagType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            IntegerTagType::Integer => write!(f, "integer"),
+        }
+    }
+}
+
+impl std::str::FromStr for IntegerTagType {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "integer" => std::result::Result::Ok(IntegerTagType::Integer),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
 
 
 /// JavaScriptのnumberで安全に扱える整数範囲（-(2^53 - 1)以上、2^53 - 1以下）に限定されたJSON数値 
@@ -1501,48 +2386,43 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<InternalServ
 
 
 
-/// 無効なタグの情報 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
-pub struct InvalidTag {
-    /// 無効となる該当タグ名
+pub struct InvalidKeyDiagnostic {
+    /// 不正なXMPプロパティ名をそのまま返す
     #[serde(rename = "key")]
           #[validate(custom(function = "check_xss_string"))]
     pub key: String,
 
-    /// - `INVALID_KEY`: タグ名が条件を満たしていない - `UNSUPPORTED_VALUE_TYPE`: タグの型がサポートされていない - `INVALID_VALUE`: 値が条件を満たしていない 
-    /// Note: inline enums are not fully supported by openapi-generator
-    #[serde(rename = "reason")]
-          #[validate(custom(function = "check_xss_string"))]
-    pub reason: String,
+    #[serde(rename = "kind")]
+          #[validate(nested)]
+    pub kind: models::InvalidKeyDiagnosticKind,
 
 }
 
 
 
-impl InvalidTag {
+impl InvalidKeyDiagnostic {
     #[allow(clippy::new_without_default, clippy::too_many_arguments)]
-    pub fn new(key: String, reason: String, ) -> InvalidTag {
-        InvalidTag {
+    pub fn new(key: String, kind: models::InvalidKeyDiagnosticKind, ) -> InvalidKeyDiagnostic {
+        InvalidKeyDiagnostic {
  key,
- reason,
+ kind,
         }
     }
 }
 
-/// Converts the InvalidTag value to the Query Parameters representation (style=form, explode=false)
+/// Converts the InvalidKeyDiagnostic value to the Query Parameters representation (style=form, explode=false)
 /// specified in https://swagger.io/docs/specification/serialization/
 /// Should be implemented in a serde serializer
-impl std::fmt::Display for InvalidTag {
+impl std::fmt::Display for InvalidKeyDiagnostic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let params: Vec<Option<String>> = vec![
 
             Some("key".to_string()),
             Some(self.key.to_string()),
 
-
-            Some("reason".to_string()),
-            Some(self.reason.to_string()),
+            // Skipping kind in query parameter serialization
 
         ];
 
@@ -1550,10 +2430,10 @@ impl std::fmt::Display for InvalidTag {
     }
 }
 
-/// Converts Query Parameters representation (style=form, explode=false) to a InvalidTag value
+/// Converts Query Parameters representation (style=form, explode=false) to a InvalidKeyDiagnostic value
 /// as specified in https://swagger.io/docs/specification/serialization/
 /// Should be implemented in a serde deserializer
-impl std::str::FromStr for InvalidTag {
+impl std::str::FromStr for InvalidKeyDiagnostic {
     type Err = String;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
@@ -1562,7 +2442,7 @@ impl std::str::FromStr for InvalidTag {
         #[allow(dead_code)]
         struct IntermediateRep {
             pub key: Vec<String>,
-            pub reason: Vec<String>,
+            pub kind: Vec<models::InvalidKeyDiagnosticKind>,
         }
 
         let mut intermediate_rep = IntermediateRep::default();
@@ -1574,7 +2454,7 @@ impl std::str::FromStr for InvalidTag {
         while key_result.is_some() {
             let val = match string_iter.next() {
                 Some(x) => x,
-                None => return std::result::Result::Err("Missing value while parsing InvalidTag".to_string())
+                None => return std::result::Result::Err("Missing value while parsing InvalidKeyDiagnostic".to_string())
             };
 
             if let Some(key) = key_result {
@@ -1583,8 +2463,8 @@ impl std::str::FromStr for InvalidTag {
                     #[allow(clippy::redundant_clone)]
                     "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     #[allow(clippy::redundant_clone)]
-                    "reason" => intermediate_rep.reason.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
-                    _ => return std::result::Result::Err("Unexpected key while parsing InvalidTag".to_string())
+                    "kind" => intermediate_rep.kind.push(<models::InvalidKeyDiagnosticKind as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    _ => return std::result::Result::Err("Unexpected key while parsing InvalidKeyDiagnostic".to_string())
                 }
             }
 
@@ -1593,38 +2473,38 @@ impl std::str::FromStr for InvalidTag {
         }
 
         // Use the intermediate representation to return the struct
-        std::result::Result::Ok(InvalidTag {
-            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in InvalidTag".to_string())?,
-            reason: intermediate_rep.reason.into_iter().next().ok_or_else(|| "reason missing in InvalidTag".to_string())?,
+        std::result::Result::Ok(InvalidKeyDiagnostic {
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in InvalidKeyDiagnostic".to_string())?,
+            kind: intermediate_rep.kind.into_iter().next().ok_or_else(|| "kind missing in InvalidKeyDiagnostic".to_string())?,
         })
     }
 }
 
-// Methods for converting between header::IntoHeaderValue<InvalidTag> and HeaderValue
+// Methods for converting between header::IntoHeaderValue<InvalidKeyDiagnostic> and HeaderValue
 
 #[cfg(feature = "server")]
-impl std::convert::TryFrom<header::IntoHeaderValue<InvalidTag>> for HeaderValue {
+impl std::convert::TryFrom<header::IntoHeaderValue<InvalidKeyDiagnostic>> for HeaderValue {
     type Error = String;
 
-    fn try_from(hdr_value: header::IntoHeaderValue<InvalidTag>) -> std::result::Result<Self, Self::Error> {
+    fn try_from(hdr_value: header::IntoHeaderValue<InvalidKeyDiagnostic>) -> std::result::Result<Self, Self::Error> {
         let hdr_value = hdr_value.to_string();
         match HeaderValue::from_str(&hdr_value) {
              std::result::Result::Ok(value) => std::result::Result::Ok(value),
-             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for InvalidTag - value: {hdr_value} is invalid {e}"#))
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for InvalidKeyDiagnostic - value: {hdr_value} is invalid {e}"#))
         }
     }
 }
 
 #[cfg(feature = "server")]
-impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<InvalidTag> {
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<InvalidKeyDiagnostic> {
     type Error = String;
 
     fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
         match hdr_value.to_str() {
              std::result::Result::Ok(value) => {
-                    match <InvalidTag as std::str::FromStr>::from_str(value) {
+                    match <InvalidKeyDiagnostic as std::str::FromStr>::from_str(value) {
                         std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
-                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into InvalidTag - {err}"#))
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into InvalidKeyDiagnostic - {err}"#))
                     }
              },
              std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
@@ -1634,7 +2514,46 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<InvalidTag> 
 
 
 
-/// キーのみのタグ
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum InvalidKeyDiagnosticKind {
+    #[serde(rename = "invalidKey")]
+    InvalidKey,
+}
+
+impl validator::Validate for InvalidKeyDiagnosticKind
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for InvalidKeyDiagnosticKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            InvalidKeyDiagnosticKind::InvalidKey => write!(f, "invalidKey"),
+        }
+    }
+}
+
+impl std::str::FromStr for InvalidKeyDiagnosticKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "invalidKey" => std::result::Result::Ok(InvalidKeyDiagnosticKind::InvalidKey),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
+
+
+/// keyのみのタグ
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
 pub struct KeyOnlyTag {
@@ -1646,10 +2565,9 @@ pub struct KeyOnlyTag {
     )]
     pub key: String,
 
-    /// Note: inline enums are not fully supported by openapi-generator
     #[serde(rename = "type")]
-          #[validate(custom(function = "check_xss_string"))]
-    pub r_type: String,
+          #[validate(nested)]
+    pub r_type: models::KeyOnlyTagType,
 
 }
 
@@ -1657,7 +2575,7 @@ pub struct KeyOnlyTag {
 
 impl KeyOnlyTag {
     #[allow(clippy::new_without_default, clippy::too_many_arguments)]
-    pub fn new(key: String, r_type: String, ) -> KeyOnlyTag {
+    pub fn new(key: String, r_type: models::KeyOnlyTagType, ) -> KeyOnlyTag {
         KeyOnlyTag {
  key,
  r_type,
@@ -1675,9 +2593,7 @@ impl std::fmt::Display for KeyOnlyTag {
             Some("key".to_string()),
             Some(self.key.to_string()),
 
-
-            Some("type".to_string()),
-            Some(self.r_type.to_string()),
+            // Skipping type in query parameter serialization
 
         ];
 
@@ -1697,7 +2613,7 @@ impl std::str::FromStr for KeyOnlyTag {
         #[allow(dead_code)]
         struct IntermediateRep {
             pub key: Vec<String>,
-            pub r_type: Vec<String>,
+            pub r_type: Vec<models::KeyOnlyTagType>,
         }
 
         let mut intermediate_rep = IntermediateRep::default();
@@ -1718,7 +2634,7 @@ impl std::str::FromStr for KeyOnlyTag {
                     #[allow(clippy::redundant_clone)]
                     "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     #[allow(clippy::redundant_clone)]
-                    "type" => intermediate_rep.r_type.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "type" => intermediate_rep.r_type.push(<models::KeyOnlyTagType as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     _ => return std::result::Result::Err("Unexpected key while parsing KeyOnlyTag".to_string())
                 }
             }
@@ -1767,6 +2683,176 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<KeyOnlyTag> 
     }
 }
 
+
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct KeyOnlyTagDefinition {
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+    #[serde(rename = "type")]
+          #[validate(nested)]
+    pub r_type: models::KeyOnlyTagType,
+
+}
+
+
+
+impl KeyOnlyTagDefinition {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(key: String, r_type: models::KeyOnlyTagType, ) -> KeyOnlyTagDefinition {
+        KeyOnlyTagDefinition {
+ key,
+ r_type,
+        }
+    }
+}
+
+/// Converts the KeyOnlyTagDefinition value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for KeyOnlyTagDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+            // Skipping type in query parameter serialization
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a KeyOnlyTagDefinition value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for KeyOnlyTagDefinition {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub key: Vec<String>,
+            pub r_type: Vec<models::KeyOnlyTagType>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing KeyOnlyTagDefinition".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "type" => intermediate_rep.r_type.push(<models::KeyOnlyTagType as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    _ => return std::result::Result::Err("Unexpected key while parsing KeyOnlyTagDefinition".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(KeyOnlyTagDefinition {
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in KeyOnlyTagDefinition".to_string())?,
+            r_type: intermediate_rep.r_type.into_iter().next().ok_or_else(|| "type missing in KeyOnlyTagDefinition".to_string())?,
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<KeyOnlyTagDefinition> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<KeyOnlyTagDefinition>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<KeyOnlyTagDefinition>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for KeyOnlyTagDefinition - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<KeyOnlyTagDefinition> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <KeyOnlyTagDefinition as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into KeyOnlyTagDefinition - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum KeyOnlyTagType {
+    #[serde(rename = "keyOnly")]
+    KeyOnly,
+}
+
+impl validator::Validate for KeyOnlyTagType
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for KeyOnlyTagType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            KeyOnlyTagType::KeyOnly => write!(f, "keyOnly"),
+        }
+    }
+}
+
+impl std::str::FromStr for KeyOnlyTagType {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "keyOnly" => std::result::Result::Ok(KeyOnlyTagType::KeyOnly),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
 
 
 /// コンテンツファイルのメディアタイプ
@@ -1976,6 +3062,538 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<MediaTypeMat
 
 
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct MissingRequiredTagDiagnostic {
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+    #[serde(rename = "kind")]
+          #[validate(nested)]
+    pub kind: models::MissingRequiredTagDiagnosticKind,
+
+    #[serde(rename = "definition")]
+          #[validate(nested)]
+    pub definition: models::TagDefinition,
+
+}
+
+
+
+impl MissingRequiredTagDiagnostic {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(key: String, kind: models::MissingRequiredTagDiagnosticKind, definition: models::TagDefinition, ) -> MissingRequiredTagDiagnostic {
+        MissingRequiredTagDiagnostic {
+ key,
+ kind,
+ definition,
+        }
+    }
+}
+
+/// Converts the MissingRequiredTagDiagnostic value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for MissingRequiredTagDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+            // Skipping kind in query parameter serialization
+
+            // Skipping definition in query parameter serialization
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a MissingRequiredTagDiagnostic value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for MissingRequiredTagDiagnostic {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub key: Vec<String>,
+            pub kind: Vec<models::MissingRequiredTagDiagnosticKind>,
+            pub definition: Vec<models::TagDefinition>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing MissingRequiredTagDiagnostic".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "kind" => intermediate_rep.kind.push(<models::MissingRequiredTagDiagnosticKind as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "definition" => intermediate_rep.definition.push(<models::TagDefinition as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    _ => return std::result::Result::Err("Unexpected key while parsing MissingRequiredTagDiagnostic".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(MissingRequiredTagDiagnostic {
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in MissingRequiredTagDiagnostic".to_string())?,
+            kind: intermediate_rep.kind.into_iter().next().ok_or_else(|| "kind missing in MissingRequiredTagDiagnostic".to_string())?,
+            definition: intermediate_rep.definition.into_iter().next().ok_or_else(|| "definition missing in MissingRequiredTagDiagnostic".to_string())?,
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<MissingRequiredTagDiagnostic> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<MissingRequiredTagDiagnostic>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<MissingRequiredTagDiagnostic>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for MissingRequiredTagDiagnostic - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<MissingRequiredTagDiagnostic> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <MissingRequiredTagDiagnostic as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into MissingRequiredTagDiagnostic - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum MissingRequiredTagDiagnosticKind {
+    #[serde(rename = "missingRequiredTag")]
+    MissingRequiredTag,
+}
+
+impl validator::Validate for MissingRequiredTagDiagnosticKind
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for MissingRequiredTagDiagnosticKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            MissingRequiredTagDiagnosticKind::MissingRequiredTag => write!(f, "missingRequiredTag"),
+        }
+    }
+}
+
+impl std::str::FromStr for MissingRequiredTagDiagnosticKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "missingRequiredTag" => std::result::Result::Ok(MissingRequiredTagDiagnosticKind::MissingRequiredTag),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct NotAllowedTagKeyDiagnostic {
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+    #[serde(rename = "kind")]
+          #[validate(nested)]
+    pub kind: models::NotAllowedTagKeyDiagnosticKind,
+
+}
+
+
+
+impl NotAllowedTagKeyDiagnostic {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(key: String, kind: models::NotAllowedTagKeyDiagnosticKind, ) -> NotAllowedTagKeyDiagnostic {
+        NotAllowedTagKeyDiagnostic {
+ key,
+ kind,
+        }
+    }
+}
+
+/// Converts the NotAllowedTagKeyDiagnostic value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for NotAllowedTagKeyDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+            // Skipping kind in query parameter serialization
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a NotAllowedTagKeyDiagnostic value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for NotAllowedTagKeyDiagnostic {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub key: Vec<String>,
+            pub kind: Vec<models::NotAllowedTagKeyDiagnosticKind>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing NotAllowedTagKeyDiagnostic".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "kind" => intermediate_rep.kind.push(<models::NotAllowedTagKeyDiagnosticKind as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    _ => return std::result::Result::Err("Unexpected key while parsing NotAllowedTagKeyDiagnostic".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(NotAllowedTagKeyDiagnostic {
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in NotAllowedTagKeyDiagnostic".to_string())?,
+            kind: intermediate_rep.kind.into_iter().next().ok_or_else(|| "kind missing in NotAllowedTagKeyDiagnostic".to_string())?,
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<NotAllowedTagKeyDiagnostic> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<NotAllowedTagKeyDiagnostic>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<NotAllowedTagKeyDiagnostic>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for NotAllowedTagKeyDiagnostic - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<NotAllowedTagKeyDiagnostic> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <NotAllowedTagKeyDiagnostic as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into NotAllowedTagKeyDiagnostic - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum NotAllowedTagKeyDiagnosticKind {
+    #[serde(rename = "notAllowedTagKey")]
+    NotAllowedTagKey,
+}
+
+impl validator::Validate for NotAllowedTagKeyDiagnosticKind
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for NotAllowedTagKeyDiagnosticKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            NotAllowedTagKeyDiagnosticKind::NotAllowedTagKey => write!(f, "notAllowedTagKey"),
+        }
+    }
+}
+
+impl std::str::FromStr for NotAllowedTagKeyDiagnosticKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "notAllowedTagKey" => std::result::Result::Ok(NotAllowedTagKeyDiagnosticKind::NotAllowedTagKey),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct NotAllowedTagValueDiagnostic {
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+    #[serde(rename = "kind")]
+          #[validate(nested)]
+    pub kind: models::NotAllowedTagValueDiagnosticKind,
+
+    #[serde(rename = "definition")]
+          #[validate(nested)]
+    pub definition: models::TagDefinition,
+
+}
+
+
+
+impl NotAllowedTagValueDiagnostic {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(key: String, kind: models::NotAllowedTagValueDiagnosticKind, definition: models::TagDefinition, ) -> NotAllowedTagValueDiagnostic {
+        NotAllowedTagValueDiagnostic {
+ key,
+ kind,
+ definition,
+        }
+    }
+}
+
+/// Converts the NotAllowedTagValueDiagnostic value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for NotAllowedTagValueDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+            // Skipping kind in query parameter serialization
+
+            // Skipping definition in query parameter serialization
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a NotAllowedTagValueDiagnostic value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for NotAllowedTagValueDiagnostic {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub key: Vec<String>,
+            pub kind: Vec<models::NotAllowedTagValueDiagnosticKind>,
+            pub definition: Vec<models::TagDefinition>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing NotAllowedTagValueDiagnostic".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "kind" => intermediate_rep.kind.push(<models::NotAllowedTagValueDiagnosticKind as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "definition" => intermediate_rep.definition.push(<models::TagDefinition as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    _ => return std::result::Result::Err("Unexpected key while parsing NotAllowedTagValueDiagnostic".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(NotAllowedTagValueDiagnostic {
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in NotAllowedTagValueDiagnostic".to_string())?,
+            kind: intermediate_rep.kind.into_iter().next().ok_or_else(|| "kind missing in NotAllowedTagValueDiagnostic".to_string())?,
+            definition: intermediate_rep.definition.into_iter().next().ok_or_else(|| "definition missing in NotAllowedTagValueDiagnostic".to_string())?,
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<NotAllowedTagValueDiagnostic> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<NotAllowedTagValueDiagnostic>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<NotAllowedTagValueDiagnostic>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for NotAllowedTagValueDiagnostic - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<NotAllowedTagValueDiagnostic> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <NotAllowedTagValueDiagnostic as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into NotAllowedTagValueDiagnostic - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum NotAllowedTagValueDiagnosticKind {
+    #[serde(rename = "notAllowedTagValue")]
+    NotAllowedTagValue,
+}
+
+impl validator::Validate for NotAllowedTagValueDiagnosticKind
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for NotAllowedTagValueDiagnosticKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            NotAllowedTagValueDiagnosticKind::NotAllowedTagValue => write!(f, "notAllowedTagValue"),
+        }
+    }
+}
+
+impl std::str::FromStr for NotAllowedTagValueDiagnosticKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "notAllowedTagValue" => std::result::Result::Ok(NotAllowedTagValueDiagnosticKind::NotAllowedTagValue),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
+
+
 /// RFC 9457に準拠したAPIエラーの詳細
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
@@ -2171,10 +3789,9 @@ pub struct RealSetTag {
     )]
     pub key: String,
 
-    /// Note: inline enums are not fully supported by openapi-generator
     #[serde(rename = "type")]
-          #[validate(custom(function = "check_xss_string"))]
-    pub r_type: String,
+          #[validate(nested)]
+    pub r_type: models::RealSetTagType,
 
     #[serde(rename = "values")]
     #[validate(
@@ -2188,7 +3805,7 @@ pub struct RealSetTag {
 
 impl RealSetTag {
     #[allow(clippy::new_without_default, clippy::too_many_arguments)]
-    pub fn new(key: String, r_type: String, values: Vec<models::RealTagValue>, ) -> RealSetTag {
+    pub fn new(key: String, r_type: models::RealSetTagType, values: Vec<models::RealTagValue>, ) -> RealSetTag {
         RealSetTag {
  key,
  r_type,
@@ -2207,9 +3824,7 @@ impl std::fmt::Display for RealSetTag {
             Some("key".to_string()),
             Some(self.key.to_string()),
 
-
-            Some("type".to_string()),
-            Some(self.r_type.to_string()),
+            // Skipping type in query parameter serialization
 
 
             Some("values".to_string()),
@@ -2233,7 +3848,7 @@ impl std::str::FromStr for RealSetTag {
         #[allow(dead_code)]
         struct IntermediateRep {
             pub key: Vec<String>,
-            pub r_type: Vec<String>,
+            pub r_type: Vec<models::RealSetTagType>,
             pub values: Vec<Vec<models::RealTagValue>>,
         }
 
@@ -2255,7 +3870,7 @@ impl std::str::FromStr for RealSetTag {
                     #[allow(clippy::redundant_clone)]
                     "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     #[allow(clippy::redundant_clone)]
-                    "type" => intermediate_rep.r_type.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "type" => intermediate_rep.r_type.push(<models::RealSetTagType as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     "values" => return std::result::Result::Err("Parsing a container in this style is not supported in RealSetTag".to_string()),
                     _ => return std::result::Result::Err("Unexpected key while parsing RealSetTag".to_string())
                 }
@@ -2308,6 +3923,232 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<RealSetTag> 
 
 
 
+/// Real値からなる集合の定義。allowedValuesとmin・maxは同時に指定しない
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct RealSetTagDefinition {
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+    #[serde(rename = "type")]
+          #[validate(nested)]
+    pub r_type: models::RealSetTagType,
+
+    /// XMPのRealの字句形式に従い、IEEE 754 binary64の有限値として変換可能な値をJSON数値で返す
+    #[serde(rename = "min")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub min: Option<f64>,
+
+    /// XMPのRealの字句形式に従い、IEEE 754 binary64の有限値として変換可能な値をJSON数値で返す
+    #[serde(rename = "max")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub max: Option<f64>,
+
+    #[serde(rename = "allowedValues")]
+    #[validate(
+          nested,
+    )]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub allowed_values: Option<Vec<models::RealTagValue>>,
+
+}
+
+
+
+impl RealSetTagDefinition {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(key: String, r_type: models::RealSetTagType, ) -> RealSetTagDefinition {
+        RealSetTagDefinition {
+ key,
+ r_type,
+ min: None,
+ max: None,
+ allowed_values: None,
+        }
+    }
+}
+
+/// Converts the RealSetTagDefinition value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for RealSetTagDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+            // Skipping type in query parameter serialization
+
+
+            self.min.as_ref().map(|min| {
+                [
+                    "min".to_string(),
+                    min.to_string(),
+                ].join(",")
+            }),
+
+
+            self.max.as_ref().map(|max| {
+                [
+                    "max".to_string(),
+                    max.to_string(),
+                ].join(",")
+            }),
+
+
+            self.allowed_values.as_ref().map(|allowed_values| {
+                [
+                    "allowedValues".to_string(),
+                    allowed_values.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","),
+                ].join(",")
+            }),
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a RealSetTagDefinition value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for RealSetTagDefinition {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub key: Vec<String>,
+            pub r_type: Vec<models::RealSetTagType>,
+            pub min: Vec<f64>,
+            pub max: Vec<f64>,
+            pub allowed_values: Vec<Vec<models::RealTagValue>>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing RealSetTagDefinition".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "type" => intermediate_rep.r_type.push(<models::RealSetTagType as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "min" => intermediate_rep.min.push(<f64 as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "max" => intermediate_rep.max.push(<f64 as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "allowedValues" => return std::result::Result::Err("Parsing a container in this style is not supported in RealSetTagDefinition".to_string()),
+                    _ => return std::result::Result::Err("Unexpected key while parsing RealSetTagDefinition".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(RealSetTagDefinition {
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in RealSetTagDefinition".to_string())?,
+            r_type: intermediate_rep.r_type.into_iter().next().ok_or_else(|| "type missing in RealSetTagDefinition".to_string())?,
+            min: intermediate_rep.min.into_iter().next(),
+            max: intermediate_rep.max.into_iter().next(),
+            allowed_values: intermediate_rep.allowed_values.into_iter().next(),
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<RealSetTagDefinition> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<RealSetTagDefinition>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<RealSetTagDefinition>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for RealSetTagDefinition - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<RealSetTagDefinition> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <RealSetTagDefinition as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into RealSetTagDefinition - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum RealSetTagType {
+    #[serde(rename = "realSet")]
+    RealSet,
+}
+
+impl validator::Validate for RealSetTagType
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for RealSetTagType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            RealSetTagType::RealSet => write!(f, "realSet"),
+        }
+    }
+}
+
+impl std::str::FromStr for RealSetTagType {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "realSet" => std::result::Result::Ok(RealSetTagType::RealSet),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
+
+
 /// 単一のReal値を持つタグ
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
@@ -2320,10 +4161,9 @@ pub struct RealTag {
     )]
     pub key: String,
 
-    /// Note: inline enums are not fully supported by openapi-generator
     #[serde(rename = "type")]
-          #[validate(custom(function = "check_xss_string"))]
-    pub r_type: String,
+          #[validate(nested)]
+    pub r_type: models::RealTagType,
 
     /// XMPのRealの字句形式に従い、IEEE 754 binary64の有限値として変換可能な値をJSON数値で返す
     #[serde(rename = "value")]
@@ -2335,7 +4175,7 @@ pub struct RealTag {
 
 impl RealTag {
     #[allow(clippy::new_without_default, clippy::too_many_arguments)]
-    pub fn new(key: String, r_type: String, value: f64, ) -> RealTag {
+    pub fn new(key: String, r_type: models::RealTagType, value: f64, ) -> RealTag {
         RealTag {
  key,
  r_type,
@@ -2354,9 +4194,7 @@ impl std::fmt::Display for RealTag {
             Some("key".to_string()),
             Some(self.key.to_string()),
 
-
-            Some("type".to_string()),
-            Some(self.r_type.to_string()),
+            // Skipping type in query parameter serialization
 
 
             Some("value".to_string()),
@@ -2380,7 +4218,7 @@ impl std::str::FromStr for RealTag {
         #[allow(dead_code)]
         struct IntermediateRep {
             pub key: Vec<String>,
-            pub r_type: Vec<String>,
+            pub r_type: Vec<models::RealTagType>,
             pub value: Vec<f64>,
         }
 
@@ -2402,7 +4240,7 @@ impl std::str::FromStr for RealTag {
                     #[allow(clippy::redundant_clone)]
                     "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     #[allow(clippy::redundant_clone)]
-                    "type" => intermediate_rep.r_type.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "type" => intermediate_rep.r_type.push(<models::RealTagType as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     #[allow(clippy::redundant_clone)]
                     "value" => intermediate_rep.value.push(<f64 as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     _ => return std::result::Result::Err("Unexpected key while parsing RealTag".to_string())
@@ -2454,6 +4292,232 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<RealTag> {
     }
 }
 
+
+
+/// 単一のReal値の定義。allowedValuesとmin・maxは同時に指定しない
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct RealTagDefinition {
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+    #[serde(rename = "type")]
+          #[validate(nested)]
+    pub r_type: models::RealTagType,
+
+    /// XMPのRealの字句形式に従い、IEEE 754 binary64の有限値として変換可能な値をJSON数値で返す
+    #[serde(rename = "min")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub min: Option<f64>,
+
+    /// XMPのRealの字句形式に従い、IEEE 754 binary64の有限値として変換可能な値をJSON数値で返す
+    #[serde(rename = "max")]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub max: Option<f64>,
+
+    #[serde(rename = "allowedValues")]
+    #[validate(
+          nested,
+    )]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub allowed_values: Option<Vec<models::RealTagValue>>,
+
+}
+
+
+
+impl RealTagDefinition {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(key: String, r_type: models::RealTagType, ) -> RealTagDefinition {
+        RealTagDefinition {
+ key,
+ r_type,
+ min: None,
+ max: None,
+ allowed_values: None,
+        }
+    }
+}
+
+/// Converts the RealTagDefinition value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for RealTagDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+            // Skipping type in query parameter serialization
+
+
+            self.min.as_ref().map(|min| {
+                [
+                    "min".to_string(),
+                    min.to_string(),
+                ].join(",")
+            }),
+
+
+            self.max.as_ref().map(|max| {
+                [
+                    "max".to_string(),
+                    max.to_string(),
+                ].join(",")
+            }),
+
+
+            self.allowed_values.as_ref().map(|allowed_values| {
+                [
+                    "allowedValues".to_string(),
+                    allowed_values.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","),
+                ].join(",")
+            }),
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a RealTagDefinition value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for RealTagDefinition {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub key: Vec<String>,
+            pub r_type: Vec<models::RealTagType>,
+            pub min: Vec<f64>,
+            pub max: Vec<f64>,
+            pub allowed_values: Vec<Vec<models::RealTagValue>>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing RealTagDefinition".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "type" => intermediate_rep.r_type.push(<models::RealTagType as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "min" => intermediate_rep.min.push(<f64 as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "max" => intermediate_rep.max.push(<f64 as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "allowedValues" => return std::result::Result::Err("Parsing a container in this style is not supported in RealTagDefinition".to_string()),
+                    _ => return std::result::Result::Err("Unexpected key while parsing RealTagDefinition".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(RealTagDefinition {
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in RealTagDefinition".to_string())?,
+            r_type: intermediate_rep.r_type.into_iter().next().ok_or_else(|| "type missing in RealTagDefinition".to_string())?,
+            min: intermediate_rep.min.into_iter().next(),
+            max: intermediate_rep.max.into_iter().next(),
+            allowed_values: intermediate_rep.allowed_values.into_iter().next(),
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<RealTagDefinition> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<RealTagDefinition>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<RealTagDefinition>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for RealTagDefinition - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<RealTagDefinition> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <RealTagDefinition as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into RealTagDefinition - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum RealTagType {
+    #[serde(rename = "real")]
+    Real,
+}
+
+impl validator::Validate for RealTagType
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for RealTagType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            RealTagType::Real => write!(f, "real"),
+        }
+    }
+}
+
+impl std::str::FromStr for RealTagType {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "real" => std::result::Result::Ok(RealTagType::Real),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
 
 
 /// XMPのRealの字句形式に従い、IEEE 754 binary64の有限値として変換可能な値をJSON数値で返す
@@ -2628,6 +4692,87 @@ impl From<models::RealSetTag> for Tag {
 
 
 
+/// タグスキーマに記載されたタグ定義
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+pub enum TagDefinition {
+    KeyOnlyTagDefinition(models::KeyOnlyTagDefinition),
+    TextTagDefinition(models::TextTagDefinition),
+    IntegerTagDefinition(models::IntegerTagDefinition),
+    RealTagDefinition(models::RealTagDefinition),
+    TextSetTagDefinition(models::TextSetTagDefinition),
+    IntegerSetTagDefinition(models::IntegerSetTagDefinition),
+    RealSetTagDefinition(models::RealSetTagDefinition),
+}
+
+impl validator::Validate for TagDefinition
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        match self {
+            Self::KeyOnlyTagDefinition(v) => v.validate(),
+            Self::TextTagDefinition(v) => v.validate(),
+            Self::IntegerTagDefinition(v) => v.validate(),
+            Self::RealTagDefinition(v) => v.validate(),
+            Self::TextSetTagDefinition(v) => v.validate(),
+            Self::IntegerSetTagDefinition(v) => v.validate(),
+            Self::RealSetTagDefinition(v) => v.validate(),
+        }
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a TagDefinition value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for TagDefinition {
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        serde_json::from_str(s)
+    }
+}
+
+
+impl From<models::KeyOnlyTagDefinition> for TagDefinition {
+    fn from(value: models::KeyOnlyTagDefinition) -> Self {
+        Self::KeyOnlyTagDefinition(value)
+    }
+}
+impl From<models::TextTagDefinition> for TagDefinition {
+    fn from(value: models::TextTagDefinition) -> Self {
+        Self::TextTagDefinition(value)
+    }
+}
+impl From<models::IntegerTagDefinition> for TagDefinition {
+    fn from(value: models::IntegerTagDefinition) -> Self {
+        Self::IntegerTagDefinition(value)
+    }
+}
+impl From<models::RealTagDefinition> for TagDefinition {
+    fn from(value: models::RealTagDefinition) -> Self {
+        Self::RealTagDefinition(value)
+    }
+}
+impl From<models::TextSetTagDefinition> for TagDefinition {
+    fn from(value: models::TextSetTagDefinition) -> Self {
+        Self::TextSetTagDefinition(value)
+    }
+}
+impl From<models::IntegerSetTagDefinition> for TagDefinition {
+    fn from(value: models::IntegerSetTagDefinition) -> Self {
+        Self::IntegerSetTagDefinition(value)
+    }
+}
+impl From<models::RealSetTagDefinition> for TagDefinition {
+    fn from(value: models::RealSetTagDefinition) -> Self {
+        Self::RealSetTagDefinition(value)
+    }
+}
+
+
+
+
+
 /// Enumeration of values.
 /// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
 /// which helps with FFI.
@@ -2667,7 +4812,7 @@ impl std::str::FromStr for TagExistsKind {
 }
 
 
-/// 指定した名前の有効なタグが型を問わず存在する場合に一致する。キーのみのタグも対象とするがinvalidTagsは対象外。
+/// 指定した名前を持つ、有効なフォーマットかつタグスキーマに整合したタグが型を問わず存在する場合に一致する。 keyのみのタグも対象とするが無効なフォーマットやスキーマ違反のタグへは判定を行わない。 指定したkeyが無効なフォーマットであったりタグスキーマ違反であった場合にはエラーとなる。 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
 pub struct TagExistsTerm {
@@ -2890,7 +5035,7 @@ impl std::str::FromStr for TagMatchKind {
 }
 
 
-/// 指定したキーを持つタグの値が、指定値のいずれかと一致する場合に一致する。 タグが集合型の場合には、いずれかの要素が指定値のいずれかと一致すれば一致する。 有効な文字列型・文字列集合型のタグが存在しない場合は不一致とする。 
+/// 指定したkeyを持つタグの値が、指定値のいずれかと一致する場合に一致する。 指定値は文字列で受け取り、そのkeyにタグスキーマの定義があれば定義された型と制約に従って解釈する。 定義がなければ、keyが許容される場合にTextとして解釈する。値の字句からIntegerやRealを推測しない。 セット型では定義された要素型で解釈し、いずれかの要素が指定値のいずれかと一致すれば一致する。 タグが存在しない場合や、定義のないkeyのみのタグに対しては一致しない。 keyのみと定義されたタグへの値一致、フォーマットが無効なkeyや値、タグスキーマに違反するkeyや値を指定した場合にはエラーとなる。 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
 pub struct TagMatchTerm {
@@ -2906,12 +5051,13 @@ pub struct TagMatchTerm {
     )]
     pub key: String,
 
+    /// 各値をタグスキーマの定義またはTextのフォールバックに従って解釈する。空文字列は指定できない。
     #[serde(rename = "values")]
     #[validate(
             length(min = 1),
-          nested,
+          custom(function = "check_xss_vec_string"),
     )]
-    pub values: Vec<models::TextTagValue>,
+    pub values: Vec<String>,
 
 }
 
@@ -2919,7 +5065,7 @@ pub struct TagMatchTerm {
 
 impl TagMatchTerm {
     #[allow(clippy::new_without_default, clippy::too_many_arguments)]
-    pub fn new(kind: models::TagMatchKind, key: String, values: Vec<models::TextTagValue>, ) -> TagMatchTerm {
+    pub fn new(kind: models::TagMatchKind, key: String, values: Vec<String>, ) -> TagMatchTerm {
         TagMatchTerm {
  kind,
  key,
@@ -2963,7 +5109,7 @@ impl std::str::FromStr for TagMatchTerm {
         struct IntermediateRep {
             pub kind: Vec<models::TagMatchKind>,
             pub key: Vec<String>,
-            pub values: Vec<Vec<models::TextTagValue>>,
+            pub values: Vec<Vec<String>>,
         }
 
         let mut intermediate_rep = IntermediateRep::default();
@@ -3049,10 +5195,9 @@ pub struct TextSetTag {
     )]
     pub key: String,
 
-    /// Note: inline enums are not fully supported by openapi-generator
     #[serde(rename = "type")]
-          #[validate(custom(function = "check_xss_string"))]
-    pub r_type: String,
+          #[validate(nested)]
+    pub r_type: models::TextSetTagType,
 
     #[serde(rename = "values")]
     #[validate(
@@ -3066,7 +5211,7 @@ pub struct TextSetTag {
 
 impl TextSetTag {
     #[allow(clippy::new_without_default, clippy::too_many_arguments)]
-    pub fn new(key: String, r_type: String, values: Vec<models::TextTagValue>, ) -> TextSetTag {
+    pub fn new(key: String, r_type: models::TextSetTagType, values: Vec<models::TextTagValue>, ) -> TextSetTag {
         TextSetTag {
  key,
  r_type,
@@ -3085,9 +5230,7 @@ impl std::fmt::Display for TextSetTag {
             Some("key".to_string()),
             Some(self.key.to_string()),
 
-
-            Some("type".to_string()),
-            Some(self.r_type.to_string()),
+            // Skipping type in query parameter serialization
 
 
             Some("values".to_string()),
@@ -3111,7 +5254,7 @@ impl std::str::FromStr for TextSetTag {
         #[allow(dead_code)]
         struct IntermediateRep {
             pub key: Vec<String>,
-            pub r_type: Vec<String>,
+            pub r_type: Vec<models::TextSetTagType>,
             pub values: Vec<Vec<models::TextTagValue>>,
         }
 
@@ -3133,7 +5276,7 @@ impl std::str::FromStr for TextSetTag {
                     #[allow(clippy::redundant_clone)]
                     "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     #[allow(clippy::redundant_clone)]
-                    "type" => intermediate_rep.r_type.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "type" => intermediate_rep.r_type.push(<models::TextSetTagType as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     "values" => return std::result::Result::Err("Parsing a container in this style is not supported in TextSetTag".to_string()),
                     _ => return std::result::Result::Err("Unexpected key while parsing TextSetTag".to_string())
                 }
@@ -3186,6 +5329,236 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<TextSetTag> 
 
 
 
+/// Text値からなる集合の定義。allowedValuesとminLength・maxLengthは同時に指定しない
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct TextSetTagDefinition {
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+    #[serde(rename = "type")]
+          #[validate(nested)]
+    pub r_type: models::TextSetTagType,
+
+    #[serde(rename = "minLength")]
+    #[validate(
+            range(min = 1u32, max = 255u32),
+    )]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub min_length: Option<u32>,
+
+    #[serde(rename = "maxLength")]
+    #[validate(
+            range(min = 1u32, max = 255u32),
+    )]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub max_length: Option<u32>,
+
+    #[serde(rename = "allowedValues")]
+    #[validate(
+          nested,
+    )]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub allowed_values: Option<Vec<models::TextTagValue>>,
+
+}
+
+
+
+impl TextSetTagDefinition {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(key: String, r_type: models::TextSetTagType, ) -> TextSetTagDefinition {
+        TextSetTagDefinition {
+ key,
+ r_type,
+ min_length: None,
+ max_length: None,
+ allowed_values: None,
+        }
+    }
+}
+
+/// Converts the TextSetTagDefinition value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for TextSetTagDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+            // Skipping type in query parameter serialization
+
+
+            self.min_length.as_ref().map(|min_length| {
+                [
+                    "minLength".to_string(),
+                    min_length.to_string(),
+                ].join(",")
+            }),
+
+
+            self.max_length.as_ref().map(|max_length| {
+                [
+                    "maxLength".to_string(),
+                    max_length.to_string(),
+                ].join(",")
+            }),
+
+
+            self.allowed_values.as_ref().map(|allowed_values| {
+                [
+                    "allowedValues".to_string(),
+                    allowed_values.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","),
+                ].join(",")
+            }),
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a TextSetTagDefinition value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for TextSetTagDefinition {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub key: Vec<String>,
+            pub r_type: Vec<models::TextSetTagType>,
+            pub min_length: Vec<u32>,
+            pub max_length: Vec<u32>,
+            pub allowed_values: Vec<Vec<models::TextTagValue>>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing TextSetTagDefinition".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "type" => intermediate_rep.r_type.push(<models::TextSetTagType as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "minLength" => intermediate_rep.min_length.push(<u32 as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "maxLength" => intermediate_rep.max_length.push(<u32 as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "allowedValues" => return std::result::Result::Err("Parsing a container in this style is not supported in TextSetTagDefinition".to_string()),
+                    _ => return std::result::Result::Err("Unexpected key while parsing TextSetTagDefinition".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(TextSetTagDefinition {
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in TextSetTagDefinition".to_string())?,
+            r_type: intermediate_rep.r_type.into_iter().next().ok_or_else(|| "type missing in TextSetTagDefinition".to_string())?,
+            min_length: intermediate_rep.min_length.into_iter().next(),
+            max_length: intermediate_rep.max_length.into_iter().next(),
+            allowed_values: intermediate_rep.allowed_values.into_iter().next(),
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<TextSetTagDefinition> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<TextSetTagDefinition>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<TextSetTagDefinition>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for TextSetTagDefinition - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<TextSetTagDefinition> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <TextSetTagDefinition as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into TextSetTagDefinition - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum TextSetTagType {
+    #[serde(rename = "textSet")]
+    TextSet,
+}
+
+impl validator::Validate for TextSetTagType
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for TextSetTagType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            TextSetTagType::TextSet => write!(f, "textSet"),
+        }
+    }
+}
+
+impl std::str::FromStr for TextSetTagType {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "textSet" => std::result::Result::Ok(TextSetTagType::TextSet),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
+
+
 /// 単一のText値を持つタグ
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
@@ -3198,15 +5571,14 @@ pub struct TextTag {
     )]
     pub key: String,
 
-    /// Note: inline enums are not fully supported by openapi-generator
     #[serde(rename = "type")]
-          #[validate(custom(function = "check_xss_string"))]
-    pub r_type: String,
+          #[validate(nested)]
+    pub r_type: models::TextTagType,
 
-    /// 長さが1以上の有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFCで正規化済みの値
+    /// 長さが1以上255以下の有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFCで正規化済みの値。長さはUnicodeコードポイント数で数える
     #[serde(rename = "value")]
     #[validate(
-            length(min = 1),
+            length(min = 1, max = 255),
           custom(function = "check_xss_string"),
     )]
     pub value: String,
@@ -3217,7 +5589,7 @@ pub struct TextTag {
 
 impl TextTag {
     #[allow(clippy::new_without_default, clippy::too_many_arguments)]
-    pub fn new(key: String, r_type: String, value: String, ) -> TextTag {
+    pub fn new(key: String, r_type: models::TextTagType, value: String, ) -> TextTag {
         TextTag {
  key,
  r_type,
@@ -3236,9 +5608,7 @@ impl std::fmt::Display for TextTag {
             Some("key".to_string()),
             Some(self.key.to_string()),
 
-
-            Some("type".to_string()),
-            Some(self.r_type.to_string()),
+            // Skipping type in query parameter serialization
 
 
             Some("value".to_string()),
@@ -3262,7 +5632,7 @@ impl std::str::FromStr for TextTag {
         #[allow(dead_code)]
         struct IntermediateRep {
             pub key: Vec<String>,
-            pub r_type: Vec<String>,
+            pub r_type: Vec<models::TextTagType>,
             pub value: Vec<String>,
         }
 
@@ -3284,7 +5654,7 @@ impl std::str::FromStr for TextTag {
                     #[allow(clippy::redundant_clone)]
                     "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     #[allow(clippy::redundant_clone)]
-                    "type" => intermediate_rep.r_type.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "type" => intermediate_rep.r_type.push(<models::TextTagType as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     #[allow(clippy::redundant_clone)]
                     "value" => intermediate_rep.value.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
                     _ => return std::result::Result::Err("Unexpected key while parsing TextTag".to_string())
@@ -3338,7 +5708,237 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<TextTag> {
 
 
 
-/// 長さが1以上の有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFCで正規化済みの値
+/// 単一のText値の定義。allowedValuesとminLength・maxLengthは同時に指定しない
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct TextTagDefinition {
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+    #[serde(rename = "type")]
+          #[validate(nested)]
+    pub r_type: models::TextTagType,
+
+    #[serde(rename = "minLength")]
+    #[validate(
+            range(min = 1u32, max = 255u32),
+    )]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub min_length: Option<u32>,
+
+    #[serde(rename = "maxLength")]
+    #[validate(
+            range(min = 1u32, max = 255u32),
+    )]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub max_length: Option<u32>,
+
+    #[serde(rename = "allowedValues")]
+    #[validate(
+          nested,
+    )]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub allowed_values: Option<Vec<models::TextTagValue>>,
+
+}
+
+
+
+impl TextTagDefinition {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(key: String, r_type: models::TextTagType, ) -> TextTagDefinition {
+        TextTagDefinition {
+ key,
+ r_type,
+ min_length: None,
+ max_length: None,
+ allowed_values: None,
+        }
+    }
+}
+
+/// Converts the TextTagDefinition value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for TextTagDefinition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+            // Skipping type in query parameter serialization
+
+
+            self.min_length.as_ref().map(|min_length| {
+                [
+                    "minLength".to_string(),
+                    min_length.to_string(),
+                ].join(",")
+            }),
+
+
+            self.max_length.as_ref().map(|max_length| {
+                [
+                    "maxLength".to_string(),
+                    max_length.to_string(),
+                ].join(",")
+            }),
+
+
+            self.allowed_values.as_ref().map(|allowed_values| {
+                [
+                    "allowedValues".to_string(),
+                    allowed_values.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","),
+                ].join(",")
+            }),
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a TextTagDefinition value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for TextTagDefinition {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub key: Vec<String>,
+            pub r_type: Vec<models::TextTagType>,
+            pub min_length: Vec<u32>,
+            pub max_length: Vec<u32>,
+            pub allowed_values: Vec<Vec<models::TextTagValue>>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing TextTagDefinition".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "type" => intermediate_rep.r_type.push(<models::TextTagType as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "minLength" => intermediate_rep.min_length.push(<u32 as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "maxLength" => intermediate_rep.max_length.push(<u32 as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "allowedValues" => return std::result::Result::Err("Parsing a container in this style is not supported in TextTagDefinition".to_string()),
+                    _ => return std::result::Result::Err("Unexpected key while parsing TextTagDefinition".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(TextTagDefinition {
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in TextTagDefinition".to_string())?,
+            r_type: intermediate_rep.r_type.into_iter().next().ok_or_else(|| "type missing in TextTagDefinition".to_string())?,
+            min_length: intermediate_rep.min_length.into_iter().next(),
+            max_length: intermediate_rep.max_length.into_iter().next(),
+            allowed_values: intermediate_rep.allowed_values.into_iter().next(),
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<TextTagDefinition> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<TextTagDefinition>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<TextTagDefinition>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for TextTagDefinition - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<TextTagDefinition> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <TextTagDefinition as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into TextTagDefinition - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum TextTagType {
+    #[serde(rename = "text")]
+    Text,
+}
+
+impl validator::Validate for TextTagType
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for TextTagType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            TextTagType::Text => write!(f, "text"),
+        }
+    }
+}
+
+impl std::str::FromStr for TextTagType {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "text" => std::result::Result::Ok(TextTagType::Text),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
+
+
+/// 長さが1以上255以下の有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFCで正規化済みの値。長さはUnicodeコードポイント数で数える
 #[derive(Debug, Clone, PartialEq, PartialOrd,  serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
 pub struct TextTagValue(pub String);
@@ -3388,4 +5988,356 @@ impl std::ops::DerefMut for TextTagValue {
     }
 }
 
+
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct UnparseableTagValueDiagnostic {
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+    #[serde(rename = "kind")]
+          #[validate(nested)]
+    pub kind: models::UnparseableTagValueDiagnosticKind,
+
+    #[serde(rename = "definition")]
+          #[validate(nested)]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub definition: Option<models::TagDefinition>,
+
+}
+
+
+
+impl UnparseableTagValueDiagnostic {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(key: String, kind: models::UnparseableTagValueDiagnosticKind, ) -> UnparseableTagValueDiagnostic {
+        UnparseableTagValueDiagnostic {
+ key,
+ kind,
+ definition: None,
+        }
+    }
+}
+
+/// Converts the UnparseableTagValueDiagnostic value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for UnparseableTagValueDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+            // Skipping kind in query parameter serialization
+
+            // Skipping definition in query parameter serialization
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a UnparseableTagValueDiagnostic value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for UnparseableTagValueDiagnostic {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub key: Vec<String>,
+            pub kind: Vec<models::UnparseableTagValueDiagnosticKind>,
+            pub definition: Vec<models::TagDefinition>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing UnparseableTagValueDiagnostic".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "kind" => intermediate_rep.kind.push(<models::UnparseableTagValueDiagnosticKind as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "definition" => intermediate_rep.definition.push(<models::TagDefinition as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    _ => return std::result::Result::Err("Unexpected key while parsing UnparseableTagValueDiagnostic".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(UnparseableTagValueDiagnostic {
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in UnparseableTagValueDiagnostic".to_string())?,
+            kind: intermediate_rep.kind.into_iter().next().ok_or_else(|| "kind missing in UnparseableTagValueDiagnostic".to_string())?,
+            definition: intermediate_rep.definition.into_iter().next(),
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<UnparseableTagValueDiagnostic> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<UnparseableTagValueDiagnostic>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<UnparseableTagValueDiagnostic>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for UnparseableTagValueDiagnostic - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<UnparseableTagValueDiagnostic> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <UnparseableTagValueDiagnostic as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into UnparseableTagValueDiagnostic - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum UnparseableTagValueDiagnosticKind {
+    #[serde(rename = "unparseableTagValue")]
+    UnparseableTagValue,
+}
+
+impl validator::Validate for UnparseableTagValueDiagnosticKind
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for UnparseableTagValueDiagnosticKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            UnparseableTagValueDiagnosticKind::UnparseableTagValue => write!(f, "unparseableTagValue"),
+        }
+    }
+}
+
+impl std::str::FromStr for UnparseableTagValueDiagnosticKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "unparseableTagValue" => std::result::Result::Ok(UnparseableTagValueDiagnosticKind::UnparseableTagValue),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct UnsupportedXmpValueTypeDiagnostic {
+    /// 有効なUTF-8文字列で、デコード後のUnicodeコードポイント列がNFKCで正規化済みのタグ名。 先頭はUnicode UAX #31のXID_Start、残りはXID_Continueに属する必要がある。 長さはUnicodeコードポイント数で数える。 
+    #[serde(rename = "key")]
+    #[validate(
+            length(min = 1, max = 64),
+          custom(function = "check_xss_string"),
+    )]
+    pub key: String,
+
+    #[serde(rename = "kind")]
+          #[validate(nested)]
+    pub kind: models::UnsupportedXmpValueTypeDiagnosticKind,
+
+}
+
+
+
+impl UnsupportedXmpValueTypeDiagnostic {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(key: String, kind: models::UnsupportedXmpValueTypeDiagnosticKind, ) -> UnsupportedXmpValueTypeDiagnostic {
+        UnsupportedXmpValueTypeDiagnostic {
+ key,
+ kind,
+        }
+    }
+}
+
+/// Converts the UnsupportedXmpValueTypeDiagnostic value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for UnsupportedXmpValueTypeDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+
+            Some("key".to_string()),
+            Some(self.key.to_string()),
+
+            // Skipping kind in query parameter serialization
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a UnsupportedXmpValueTypeDiagnostic value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for UnsupportedXmpValueTypeDiagnostic {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub key: Vec<String>,
+            pub kind: Vec<models::UnsupportedXmpValueTypeDiagnosticKind>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing UnsupportedXmpValueTypeDiagnostic".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "key" => intermediate_rep.key.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "kind" => intermediate_rep.kind.push(<models::UnsupportedXmpValueTypeDiagnosticKind as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    _ => return std::result::Result::Err("Unexpected key while parsing UnsupportedXmpValueTypeDiagnostic".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(UnsupportedXmpValueTypeDiagnostic {
+            key: intermediate_rep.key.into_iter().next().ok_or_else(|| "key missing in UnsupportedXmpValueTypeDiagnostic".to_string())?,
+            kind: intermediate_rep.kind.into_iter().next().ok_or_else(|| "kind missing in UnsupportedXmpValueTypeDiagnostic".to_string())?,
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<UnsupportedXmpValueTypeDiagnostic> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<UnsupportedXmpValueTypeDiagnostic>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<UnsupportedXmpValueTypeDiagnostic>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for UnsupportedXmpValueTypeDiagnostic - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<UnsupportedXmpValueTypeDiagnostic> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <UnsupportedXmpValueTypeDiagnostic as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into UnsupportedXmpValueTypeDiagnostic - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum UnsupportedXmpValueTypeDiagnosticKind {
+    #[serde(rename = "unsupportedXmpValueType")]
+    UnsupportedXmpValueType,
+}
+
+impl validator::Validate for UnsupportedXmpValueTypeDiagnosticKind
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for UnsupportedXmpValueTypeDiagnosticKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            UnsupportedXmpValueTypeDiagnosticKind::UnsupportedXmpValueType => write!(f, "unsupportedXmpValueType"),
+        }
+    }
+}
+
+impl std::str::FromStr for UnsupportedXmpValueTypeDiagnosticKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "unsupportedXmpValueType" => std::result::Result::Ok(UnsupportedXmpValueTypeDiagnosticKind::UnsupportedXmpValueType),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
 

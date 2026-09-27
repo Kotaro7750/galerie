@@ -41,7 +41,8 @@ async fn main() -> anyhow::Result<()> {
         .try_deserialize::<GalerieConfig>()?;
 
     config.validate().await?;
-    let _tag_schema_storage = config.tag_schema().construct_schema_storage().await?;
+    let tag_schema_storage = config.tag_schema().construct_schema_storage().await?;
+    let tag_schema = tag_schema_storage.get_tag_schema().await?;
 
     let content_storage = config.content_storage().construct_content_storage().await?;
     let mut metadata_index = InMemoryMetadataIndex::new();
@@ -49,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
     let mut cursor = None;
     loop {
         let (contents, next_cursor) = content_storage
-            .scan_contents(NonZeroU64::new(100).unwrap(), cursor)
+            .scan_contents(&tag_schema, NonZeroU64::new(100).unwrap(), cursor)
             .await?;
         metadata_index.add_contents(&contents)?;
         cursor = next_cursor;
@@ -64,6 +65,7 @@ async fn main() -> anyhow::Result<()> {
         .construct_content_access_configurator()?;
 
     let contents_controller = ContentController::new(
+        tag_schema,
         ListContentsUseCase::new(metadata_index.clone()),
         GetContentUseCase::new(metadata_index.clone()),
     );

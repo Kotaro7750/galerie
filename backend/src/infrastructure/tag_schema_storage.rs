@@ -9,6 +9,22 @@ use crate::{
 };
 
 #[derive(Debug)]
+pub(crate) struct DefaultTagSchemaStorage {}
+
+impl DefaultTagSchemaStorage {
+    pub(crate) fn new() -> Self {
+        Self {}
+    }
+}
+
+#[async_trait]
+impl TagSchemaStorage for DefaultTagSchemaStorage {
+    async fn get_tag_schema(&self) -> Result<TagSchema, Error> {
+        Ok(TagSchema::default())
+    }
+}
+
+#[derive(Debug)]
 /// A tag schema storage that reads the tag schema from a file.
 pub(crate) struct FileSystemTagSchemaStorage {
     file_path: PathBuf,

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::domain::{
     Content, MediaType,
-    tag::{TagKey, TextTagValue},
+    tag::{IntegerTagValue, RealTagValue, TagKey, TextTagValue},
 };
 
 #[derive(Debug)]
@@ -65,17 +65,43 @@ impl FileFormatPredicate {
 pub(crate) enum TagPredicate {
     Exists,
     /// Match when content has specified key and tag value is in candidates
-    Match {
+    TextMatch {
         candidates: HashSet<TextTagValue>,
+    },
+    IntegerMatch {
+        candidates: HashSet<IntegerTagValue>,
+    },
+    RealMatch {
+        candidates: HashSet<RealTagValue>,
     },
 }
 
 impl TagPredicate {
-    pub(crate) fn new_match(tag_values: &[TextTagValue]) -> Option<Self> {
+    pub(crate) fn new_text_match(tag_values: &[TextTagValue]) -> Option<Self> {
         if tag_values.is_empty() {
             None
         } else {
-            Some(Self::Match {
+            Some(Self::TextMatch {
+                candidates: tag_values.iter().cloned().collect(),
+            })
+        }
+    }
+
+    pub(crate) fn new_integer_match(tag_values: &[IntegerTagValue]) -> Option<Self> {
+        if tag_values.is_empty() {
+            None
+        } else {
+            Some(Self::IntegerMatch {
+                candidates: tag_values.iter().cloned().collect(),
+            })
+        }
+    }
+
+    pub(crate) fn new_real_match(tag_values: &[RealTagValue]) -> Option<Self> {
+        if tag_values.is_empty() {
+            None
+        } else {
+            Some(Self::RealMatch {
                 candidates: tag_values.iter().cloned().collect(),
             })
         }
@@ -104,11 +130,29 @@ impl ContentConditionMatcher for Term {
             },
             Term::Tag { key, predicate } => match predicate {
                 TagPredicate::Exists => content.tags.as_ref().contains_key(key),
-                TagPredicate::Match { candidates } => {
+                TagPredicate::TextMatch { candidates } => {
                     if let Some(tag_value) = content.tags.as_ref().get(key) {
                         candidates
                             .iter()
                             .any(|candidate| tag_value.contain_text_value(candidate))
+                    } else {
+                        false
+                    }
+                }
+                TagPredicate::IntegerMatch { candidates } => {
+                    if let Some(tag_value) = content.tags.as_ref().get(key) {
+                        candidates
+                            .iter()
+                            .any(|candidate| tag_value.contain_integer_value(candidate))
+                    } else {
+                        false
+                    }
+                }
+                TagPredicate::RealMatch { candidates } => {
+                    if let Some(tag_value) = content.tags.as_ref().get(key) {
+                        candidates
+                            .iter()
+                            .any(|candidate| tag_value.contain_real_value(candidate))
                     } else {
                         false
                     }
@@ -153,7 +197,7 @@ mod test {
             Url::parse("https://example.com").unwrap(),
             Url::parse("https://example.com").unwrap(),
             TagSet::new(&vec![]).unwrap(),
-            SkippedTagSet::new(&vec![]).unwrap(),
+            HashSet::new(),
         );
 
         let media_type_term = Term::FileFormat {
@@ -181,7 +225,7 @@ mod test {
             Url::parse("https://example.com").unwrap(),
             Url::parse("https://example.com").unwrap(),
             TagSet::new(&vec![text_tag("exists", "value", false)]).unwrap(),
-            SkippedTagSet::new(&vec![]).unwrap(),
+            HashSet::new(),
         );
 
         let tag_existence_term = Term::Tag {
@@ -208,18 +252,18 @@ mod test {
             Url::parse("https://example.com").unwrap(),
             Url::parse("https://example.com").unwrap(),
             TagSet::new(&vec![text_tag("key", "value", false)]).unwrap(),
-            SkippedTagSet::new(&vec![]).unwrap(),
+            HashSet::new(),
         );
 
         let tag_value_term = Term::Tag {
             key: key.clone(),
-            predicate: TagPredicate::Match {
+            predicate: TagPredicate::TextMatch {
                 candidates: vec![value.clone()].into_iter().collect(),
             },
         };
         let tag_not_value_term = Term::Tag {
             key: key.clone(),
-            predicate: TagPredicate::Match {
+            predicate: TagPredicate::TextMatch {
                 candidates: vec![TextTagValue::new("not_value").unwrap()]
                     .into_iter()
                     .collect(),
@@ -228,5 +272,127 @@ mod test {
 
         assert!(tag_value_term.is_match(&content));
         assert!(!tag_not_value_term.is_match(&content));
+    }
+
+    #[test]
+    fn test_content_integer_tag_value_match() {
+        let key = TagKey::new("key").unwrap();
+        let value = IntegerTagValue::new(42).unwrap();
+
+        let content = Content::new(
+            Uuid::new_v4().try_into().unwrap(),
+            MediaType::Avif,
+            Url::parse("https://example.com").unwrap(),
+            Url::parse("https://example.com").unwrap(),
+            TagSet::new(&vec![Tag::Integer {
+                key: key.clone(),
+                value: value.clone(),
+            }])
+            .unwrap(),
+            HashSet::new(),
+        );
+
+        let tag_value_term = Term::Tag {
+            key: key.clone(),
+            predicate: TagPredicate::IntegerMatch {
+                candidates: vec![value].into_iter().collect(),
+            },
+        };
+        let tag_not_value_term = Term::Tag {
+            key,
+            predicate: TagPredicate::IntegerMatch {
+                candidates: vec![IntegerTagValue::new(43).unwrap()]
+                    .into_iter()
+                    .collect(),
+            },
+        };
+
+        assert!(tag_value_term.is_match(&content));
+        assert!(!tag_not_value_term.is_match(&content));
+    }
+
+    #[test]
+    fn test_content_real_tag_value_match() {
+        let key = TagKey::new("key").unwrap();
+        let value = RealTagValue::new(1.5).unwrap();
+
+        let content = Content::new(
+            Uuid::new_v4().try_into().unwrap(),
+            MediaType::Avif,
+            Url::parse("https://example.com").unwrap(),
+            Url::parse("https://example.com").unwrap(),
+            TagSet::new(&vec![Tag::Real {
+                key: key.clone(),
+                value: value.clone(),
+            }])
+            .unwrap(),
+            HashSet::new(),
+        );
+
+        let tag_value_term = Term::Tag {
+            key: key.clone(),
+            predicate: TagPredicate::RealMatch {
+                candidates: vec![value].into_iter().collect(),
+            },
+        };
+        let tag_not_value_term = Term::Tag {
+            key,
+            predicate: TagPredicate::RealMatch {
+                candidates: vec![RealTagValue::new(2.5).unwrap()].into_iter().collect(),
+            },
+        };
+
+        assert!(tag_value_term.is_match(&content));
+        assert!(!tag_not_value_term.is_match(&content));
+    }
+
+    #[test]
+    fn test_content_set_tag_value_matches_only_same_type() {
+        let content = Content::new(
+            Uuid::new_v4().try_into().unwrap(),
+            MediaType::Avif,
+            Url::parse("https://example.com").unwrap(),
+            Url::parse("https://example.com").unwrap(),
+            TagSet::new(&[
+                Tag::TextSet {
+                    key: TagKey::new("text").unwrap(),
+                    values: [TextTagValue::new("1").unwrap()].into(),
+                },
+                Tag::IntegerSet {
+                    key: TagKey::new("integer").unwrap(),
+                    values: [
+                        IntegerTagValue::new(1).unwrap(),
+                        IntegerTagValue::new(2).unwrap(),
+                    ]
+                    .into(),
+                },
+                Tag::RealSet {
+                    key: TagKey::new("real").unwrap(),
+                    values: [RealTagValue::new(1.0).unwrap()].into(),
+                },
+            ])
+            .unwrap(),
+            HashSet::new(),
+        );
+
+        let text_match = TagPredicate::new_text_match(&[TextTagValue::new("1").unwrap()]).unwrap();
+        let integer_match = TagPredicate::new_integer_match(&[
+            IntegerTagValue::new(3).unwrap(),
+            IntegerTagValue::new(2).unwrap(),
+        ])
+        .unwrap();
+        let real_match = TagPredicate::new_real_match(&[RealTagValue::new(1.0).unwrap()]).unwrap();
+
+        for (name, predicate) in [
+            ("text", text_match.clone()),
+            ("integer", integer_match.clone()),
+            ("real", real_match.clone()),
+        ] {
+            assert!(Term::new_tag(TagKey::new(name).unwrap(), predicate).is_match(&content));
+        }
+
+        assert!(!Term::new_tag(TagKey::new("text").unwrap(), integer_match).is_match(&content));
+        assert!(!Term::new_tag(TagKey::new("integer").unwrap(), real_match).is_match(&content));
+        assert!(!Term::new_tag(TagKey::new("real").unwrap(), text_match).is_match(&content));
     }
 }

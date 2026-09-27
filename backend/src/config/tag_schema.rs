@@ -7,7 +7,9 @@ use serde::Deserialize;
 use super::ConfigError;
 use crate::{
     domain::tag_schema::TagSchema,
-    infrastructure::tag_schema_storage::{FileSystemTagSchemaStorage, S3TagSchemaStorage},
+    infrastructure::tag_schema_storage::{
+        DefaultTagSchemaStorage, FileSystemTagSchemaStorage, S3TagSchemaStorage,
+    },
     port::TagSchemaStorage,
 };
 
@@ -22,7 +24,7 @@ pub(crate) struct TagSchemaConfig {
 impl TagSchemaConfig {
     pub(crate) async fn construct_schema_storage(
         &self,
-    ) -> Result<Option<Arc<dyn TagSchemaStorage>>, ConfigError> {
+    ) -> Result<Arc<dyn TagSchemaStorage>, ConfigError> {
         Ok(match self.mode {
             TagSchemaStorageMode::FileSystem => {
                 let config = self.file_system.as_ref().ok_or_else(|| {
@@ -31,7 +33,7 @@ impl TagSchemaConfig {
                             .to_string(),
                     )
                 })?;
-                Some(Arc::new(config.construct_schema_storage()))
+                Arc::new(config.construct_schema_storage())
             }
             TagSchemaStorageMode::S3 => {
                 let config = self.s3.as_ref().ok_or_else(|| {
@@ -39,9 +41,9 @@ impl TagSchemaConfig {
                         "S3 tag schema configuration is required for S3 mode".to_string(),
                     )
                 })?;
-                Some(Arc::new(config.construct_schema_storage().await))
+                Arc::new(config.construct_schema_storage().await)
             }
-            TagSchemaStorageMode::None => None,
+            TagSchemaStorageMode::None => Arc::new(DefaultTagSchemaStorage::new()),
         })
     }
 
@@ -64,13 +66,10 @@ impl TagSchemaConfig {
                 };
                 config.validate().await?;
             }
-            TagSchemaStorageMode::None => return Ok(()),
+            TagSchemaStorageMode::None => {}
         }
-        let storage = self.construct_schema_storage().await?.ok_or_else(|| {
-            ConfigError::InvalidConfig(
-                "tag schema storage is required for the selected mode".to_string(),
-            )
-        })?;
+
+        let storage = self.construct_schema_storage().await?;
         let schema: TagSchema = storage.get_tag_schema().await.map_err(|error| {
             ConfigError::TagSchemaConstruction(format!("retrieving tag schema: {error}"))
         })?;

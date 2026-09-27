@@ -8,6 +8,7 @@ use std::str::FromStr;
 use async_trait::async_trait;
 
 use crate::domain::tag::parse::parse_metadata;
+use crate::domain::tag_schema::TagSchema;
 use crate::domain::{Content, ContentId, Error, MediaType};
 use crate::port::ContentStorage;
 
@@ -113,6 +114,7 @@ impl FileSystemContentStorage {
 impl ContentStorage for FileSystemContentStorage {
     async fn scan_contents(
         &self,
+        tag_schema: &TagSchema,
         limit: NonZeroU64,
         cursor: Option<ContentId>,
     ) -> Result<(Vec<Content>, Option<ContentId>), Error> {
@@ -135,7 +137,7 @@ impl ContentStorage for FileSystemContentStorage {
             if let Some(media_type) = self.extract_media_type(id)
                 && let Ok(metadata) = self.extract_xmp_content(id)
             {
-                let tag_parse_result = parse_metadata(&metadata).map_err(|e| {
+                let (tags, diagnostics) = parse_metadata(&metadata, tag_schema).map_err(|e| {
                     Error::Internal(format!("Failed to parse metadata for content {}", e))
                 })?;
 
@@ -148,8 +150,8 @@ impl ContentStorage for FileSystemContentStorage {
                     format!("{}/{}.avif", self.thumbnail_url_base, id.as_ref())
                         .parse()
                         .unwrap(),
-                    tag_parse_result.parsed().clone(),
-                    tag_parse_result.skipped().clone(),
+                    tags,
+                    diagnostics,
                 );
 
                 if heap.len() as u64 >= limit.get() && content >= *heap.peek().unwrap() {

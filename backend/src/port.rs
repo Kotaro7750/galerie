@@ -17,6 +17,7 @@ pub(crate) trait ContentStorage: Send + Sync {
     /// This method returns at most `limit` number of content, and a cursor to continue scanning from the last content id.
     async fn scan_contents(
         &self,
+        tag_schema: &TagSchema,
         limit: NonZeroU64,
         cursor: Option<ContentId>,
     ) -> Result<(Vec<Content>, Option<ContentId>), Error>;
