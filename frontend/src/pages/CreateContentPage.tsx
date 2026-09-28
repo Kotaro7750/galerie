@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FileUp, Link, Eye, Pencil, Plus, Tags, Trash2, Upload } from 'lucide-react';
+import { FileUp, Link, Eye, Pencil, Plus, Tags, Trash2, Upload, X } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { MediaType, type Tag } from '../api/generated';
@@ -87,6 +87,11 @@ export function CreateContentPage() {
     setMediaType(type);
   }
 
+  function clearUrl() {
+    setSourceUrl('');
+    clearSelectedFile();
+  }
+
   async function chooseFile(candidate?: File) {
     const currentSelection = ++selection.current;
     request.current?.abort();
@@ -125,11 +130,25 @@ export function CreateContentPage() {
       const selected = await prepareContent(blob, url.pathname.split('/').pop() || 'content', mediaType, controller.signal);
       if (currentSelection === selection.current && !controller.signal.aborted) setFile(selected);
     } catch (error) {
-      if (!controller.signal.aborted) setSourceError(error instanceof TypeError ? 'URL から取得できませんでした。公開 URL と CORS 設定を確認してください。' : (error as Error).message);
+      if (!controller.signal.aborted) setSourceError(error instanceof TypeError ? 'URL から取得できませんでした。取得元の CORS 設定を確認するか、画像をコピーして貼り付けてください。' : (error as Error).message);
     } finally {
       if (request.current === controller) { request.current = undefined; setPreparing(false); }
     }
   }
+  function pasteImage(event: ClipboardEvent) {
+    if (mutation.isPending || !event.clipboardData) return;
+    const image = Array.from(event.clipboardData.items)
+      .find((item) => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile();
+    if (!image) return;
+    event.preventDefault();
+    setSourceMode('file');
+    setSourceUrl('');
+    void chooseFile(image);
+  }
+  useEffect(() => {
+    document.addEventListener('paste', pasteImage);
+    return () => document.removeEventListener('paste', pasteImage);
+  });
   const busy = mutation.isPending;
   return <section className="mx-auto max-w-3xl space-y-6">
     <h1 className="flex items-center gap-2 text-2xl font-bold"><Plus className="size-6" aria-hidden="true" />コンテンツを登録</h1>
@@ -151,11 +170,11 @@ export function CreateContentPage() {
       {sourceMode === 'file' ?
         <label className="flex cursor-pointer flex-col items-center gap-2 rounded-box border border-dashed border-base-content/30 p-6 text-center hover:border-primary focus-within:outline-2 focus-within:outline-primary">
           <FileUp className="size-8" aria-hidden="true" />
-          <span>ファイルを選択</span>
+          <span>ファイルを選択、または画像を貼り付け</span>
           <input type="file" accept={mediaType === MediaType.ImageAvif ? 'image/*' : mediaType} aria-label="アップロードするファイル" className="sr-only" disabled={busy} onChange={(event) => { void chooseFile(event.target.files?.[0]); event.target.value = ''; }} />
         </label> :
         <form className="flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); void fetchUrl(); }}>
-          <label className="input min-w-0 flex-1"><Link className="size-4 shrink-0" aria-hidden="true" /><input type="url" aria-label="コンテンツ URL" placeholder="https://example.com/image.jpg" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} /></label>
+          <div className="input min-w-0 flex-1"><Link className="size-4 shrink-0" aria-hidden="true" /><input type="url" aria-label="コンテンツ URL" placeholder="https://example.com/image.jpg" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} />{sourceUrl && <button type="button" className="btn btn-ghost btn-square btn-sm" aria-label="URL をクリア" title="URL をクリア" disabled={busy} onClick={clearUrl}><X className="size-4" aria-hidden="true" /></button>}</div>
           <IconButton icon={Eye} label="URL をプレビュー" className="btn-secondary" type="submit" disabled={busy || preparing || !sourceUrl.trim()} />
         </form>}
       {preparing && <p role="status">コンテンツを準備中…</p>}

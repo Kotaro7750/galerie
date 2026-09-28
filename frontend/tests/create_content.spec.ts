@@ -71,6 +71,40 @@ test('fetches a URL into the local preview and keeps API requests pending', asyn
   await expect(page.getByRole('button', { name: '登録する' })).toBeDisabled();
 });
 
+test('clears the URL and its prepared preview', async ({ page }) => {
+  await page.route('**/source.avif', (route) => route.fulfill({ path: sample, contentType: 'image/avif' }));
+  await page.goto('/#/contents/new');
+  await page.getByRole('button', { name: 'URL から追加' }).click();
+  await page.getByLabel('コンテンツ URL').fill(new URL('/source.avif', page.url()).href);
+  await page.getByRole('button', { name: 'URL をプレビュー' }).click();
+  await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toBeVisible();
+  await page.getByRole('button', { name: 'URL をクリア' }).click();
+  await expect(page.getByLabel('コンテンツ URL')).toHaveValue('');
+  await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '登録する' })).toBeDisabled();
+});
+
+test('pastes an image into the same local preparation flow', async ({ page }) => {
+  await page.goto('/#/contents/new');
+  await page.getByRole('button', { name: 'URL から追加' }).click();
+  await page.getByLabel('コンテンツ URL').fill('https://example.com/image.png');
+  await page.evaluate(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 12; canvas.height = 12;
+    canvas.getContext('2d')!.fillRect(0, 0, 12, 12);
+    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((value) => resolve(value!), 'image/png'));
+    const data = new DataTransfer();
+    data.items.add(new File([blob], 'clipboard.png', { type: 'image/png' }));
+    document.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
+  });
+  await expect(page.getByRole('button', { name: 'ファイルから追加' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toHaveJSProperty('naturalWidth', 12);
+  await expect(page.getByText('clipboard.avif', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: '登録する' })).toBeEnabled();
+  await page.getByRole('button', { name: 'URL から追加' }).click();
+  await expect(page.getByLabel('コンテンツ URL')).toHaveValue('');
+});
+
 test('listing link opens registration and a rejected request keeps the local draft', async ({ page }) => {
   let posts = 0;
   await page.route('**/api/v0/contents?*', (route) => route.fulfill({ json: { items: [] } }));
