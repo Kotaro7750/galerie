@@ -3,12 +3,15 @@ import { ContentCard } from '../components/ContentCard';
 import { useContents } from '../hooks/useContents';
 import { GalleryToolbar } from '../components/GalleryToolbar';
 import { ErrorMessage, Loading } from '../components/Feedback';
+import { IconLink } from '../components/IconAction';
+import { Plus } from 'lucide-react';
 
 export function ContentsPage() {
   const { query, density, setDensity, sentinel, items, refresh, retry } = useContents();
   return <section className="space-y-4">
     <ContentSearch />
     <GalleryToolbar density={density} setDensity={setDensity} refresh={refresh} refreshing={query.isFetching} />
+    <div className="flex justify-end"><IconLink className="btn-primary" icon={Plus} label="コンテンツを登録" to="/contents/new" /></div>
     {query.isPending && <Loading />}
     {query.isError && <ErrorMessage error={query.error} onRetry={retry} />}
     {query.isSuccess && items.length === 0 && <div className="space-y-4 py-12 text-center"><h2>コンテンツが見つかりません</h2><p>検索条件を変更するか、画像を追加してください。</p></div>}

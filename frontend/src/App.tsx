@@ -5,6 +5,7 @@ import { Link, Route, Routes } from 'react-router-dom';
 import { HomePage } from './pages/HomePage';
 import { ContentsPage } from './pages/ContentsPage';
 import { ContentPage } from './pages/ContentPage';
+import { CreateContentPage } from './pages/CreateContentPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 
 export function App() {
@@ -16,6 +17,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/contents" element={<ProtectedRoute><ContentsPage /></ProtectedRoute>} />
+        <Route path="/contents/new" element={<ProtectedRoute><CreateContentPage /></ProtectedRoute>} />
         <Route path="/contents/:contentId" element={<ProtectedRoute><ContentPage /></ProtectedRoute>} />
         <Route path="*" element={<section className="space-y-4 py-12 text-center"><h1>ページが見つかりません</h1><Link className="btn btn-primary" to="/">ホームへ戻る</Link></section>} />
       </Routes>

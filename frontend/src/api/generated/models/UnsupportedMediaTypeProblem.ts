@@ -14,39 +14,39 @@
 
 import { mapValues } from '../runtime';
 /**
- * サーバー内部エラーを表すProblem Details
+ * 対応していないメディアタイプを表すProblem Details
  * @export
- * @interface InternalServerErrorProblem
+ * @interface UnsupportedMediaTypeProblem
  */
-export interface InternalServerErrorProblem {
+export interface UnsupportedMediaTypeProblem {
     /**
      * エラー種別を識別するURI参照
      * @type {string}
-     * @memberof InternalServerErrorProblem
+     * @memberof UnsupportedMediaTypeProblem
      */
     type: string;
     /**
      * エラー種別の短い説明
      * @type {string}
-     * @memberof InternalServerErrorProblem
+     * @memberof UnsupportedMediaTypeProblem
      */
     title: string;
     /**
      *
-     * @type {InternalServerErrorProblemStatusEnum}
-     * @memberof InternalServerErrorProblem
+     * @type {UnsupportedMediaTypeProblemStatusEnum}
+     * @memberof UnsupportedMediaTypeProblem
      */
-    status: InternalServerErrorProblemStatusEnum;
+    status: UnsupportedMediaTypeProblemStatusEnum;
     /**
      * このエラーの具体的な説明
      * @type {string}
-     * @memberof InternalServerErrorProblem
+     * @memberof UnsupportedMediaTypeProblem
      */
     detail?: string;
     /**
      * このエラー発生を識別するURI参照
      * @type {string}
-     * @memberof InternalServerErrorProblem
+     * @memberof UnsupportedMediaTypeProblem
      */
     instance?: string;
 }
@@ -55,29 +55,29 @@ export interface InternalServerErrorProblem {
 /**
  * @export
  */
-export const InternalServerErrorProblemStatusEnum = {
-    NUMBER_500: 500
+export const UnsupportedMediaTypeProblemStatusEnum = {
+    NUMBER_415: 415
 } as const;
-export type InternalServerErrorProblemStatusEnum = typeof InternalServerErrorProblemStatusEnum[keyof typeof InternalServerErrorProblemStatusEnum];
+export type UnsupportedMediaTypeProblemStatusEnum = typeof UnsupportedMediaTypeProblemStatusEnum[keyof typeof UnsupportedMediaTypeProblemStatusEnum];
 
 
 /**
- * Check if a given object implements the InternalServerErrorProblem interface.
+ * Check if a given object implements the UnsupportedMediaTypeProblem interface.
  */
-export function instanceOfInternalServerErrorProblem(value: object): value is InternalServerErrorProblem {
+export function instanceOfUnsupportedMediaTypeProblem(value: object): value is UnsupportedMediaTypeProblem {
     if (!('type' in value) || value['type'] === undefined) return false;
     if (!('title' in value) || value['title'] === undefined) return false;
     if (!('status' in value) || value['status'] === undefined) return false;
 
-    if (value['status'] !== 500) return false;
+    if (value['status'] !== 415) return false;
     return true;
 }
 
-export function InternalServerErrorProblemFromJSON(json: any): InternalServerErrorProblem {
-    return InternalServerErrorProblemFromJSONTyped(json, false);
+export function UnsupportedMediaTypeProblemFromJSON(json: any): UnsupportedMediaTypeProblem {
+    return UnsupportedMediaTypeProblemFromJSONTyped(json, false);
 }
 
-export function InternalServerErrorProblemFromJSONTyped(json: any, ignoreDiscriminator: boolean): InternalServerErrorProblem {
+export function UnsupportedMediaTypeProblemFromJSONTyped(json: any, ignoreDiscriminator: boolean): UnsupportedMediaTypeProblem {
     if (json == null) {
         return json;
     }
@@ -91,11 +91,11 @@ export function InternalServerErrorProblemFromJSONTyped(json: any, ignoreDiscrim
     };
 }
 
-export function InternalServerErrorProblemToJSON(json: any): InternalServerErrorProblem {
-    return InternalServerErrorProblemToJSONTyped(json, false);
+export function UnsupportedMediaTypeProblemToJSON(json: any): UnsupportedMediaTypeProblem {
+    return UnsupportedMediaTypeProblemToJSONTyped(json, false);
 }
 
-export function InternalServerErrorProblemToJSONTyped(value?: InternalServerErrorProblem | null, ignoreDiscriminator: boolean = false): any {
+export function UnsupportedMediaTypeProblemToJSONTyped(value?: UnsupportedMediaTypeProblem | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }

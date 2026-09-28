@@ -5,7 +5,7 @@ export function usePageNavigation() {
   const { pathname } = useLocation();
   useEffect(() => {
     window.scrollTo(0, 0);
-    document.title = pathname === '/' ? 'Galerie' : pathname === '/contents' ? 'ギャラリー | Galerie' : 'コンテンツ | Galerie';
+    document.title = pathname === '/' ? 'Galerie' : pathname === '/contents' ? 'ギャラリー | Galerie' : pathname === '/contents/new' ? 'コンテンツ登録 | Galerie' : 'コンテンツ | Galerie';
     document.getElementById('main')?.focus({ preventScroll: true });
   }, [pathname]);
 }

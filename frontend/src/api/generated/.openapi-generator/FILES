@@ -6,6 +6,7 @@ models/BadRequestProblem.ts
 models/Content.ts
 models/ContentAccessConfiguration.ts
 models/ContentDiagnostic.ts
+models/ContentMetadataInput.ts
 models/ContentNotFoundProblem.ts
 models/ContentPage.ts
 models/DuplicateKeyDiagnostic.ts
@@ -55,6 +56,7 @@ models/TextTagDefinition.ts
 models/TextTagType.ts
 models/UnparseableTagValueDiagnostic.ts
 models/UnparseableTagValueDiagnosticKind.ts
+models/UnsupportedMediaTypeProblem.ts
 models/UnsupportedXmpValueTypeDiagnostic.ts
 models/UnsupportedXmpValueTypeDiagnosticKind.ts
 models/index.ts

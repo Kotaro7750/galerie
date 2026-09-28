@@ -13,6 +13,7 @@
     "api:generate": "openapi-generator-cli generate -i ../contracts/api/openapi.yaml -g typescript-fetch -o src/api/generated --additional-properties=hideGenerationTimestamp=true --global-property=apiDocs=false,modelDocs=false,apiTests=false,modelTests=false && node scripts/fix_generated_query.mjs"
   },
   "dependencies": {
+    "@jsquash/avif": "^2.1.1",
     "@tanstack/react-query": "^5.0.0",
     "lucide-react": "^1.42.0",
     "oidc-client-ts": "^3.5.0",

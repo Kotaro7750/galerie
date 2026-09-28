@@ -1,5 +1,5 @@
 import { ContentSearch } from '../components/ContentSearch';
-import { Images } from 'lucide-react';
+import { Images, Plus } from 'lucide-react';
 import { IconLink } from '../components/IconAction';
 
 export function HomePage() {
@@ -9,6 +9,7 @@ export function HomePage() {
       <ContentSearch />
       <div className="divider">OR</div>
       <IconLink className="btn-circle btn-primary" icon={Images} label="ギャラリーを開く" to="/contents" />
+      <IconLink className="btn-circle btn-secondary" icon={Plus} label="コンテンツを登録" to="/contents/new" />
     </div>
   </section>;
 }
