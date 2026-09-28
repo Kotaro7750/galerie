@@ -1,7 +1,13 @@
+use crate::domain::tag::{Tag, TagKey, TagSet};
 use crate::domain::{ContentDiagnostic, tag_schema::TagSchema};
 
-use super::*;
+use super::TAG_NAMESPACE_URI;
+use quick_xml::NsReader;
+use quick_xml::events::Event;
+use quick_xml::name::{Namespace, ResolveResult};
 use std::collections::HashSet;
+use thiserror::Error;
+use xmp_toolkit::{IterOptions, XmpMeta, XmpProperty};
 
 #[derive(Debug, Error)]
 pub(crate) enum ParseMetadataError {
@@ -19,7 +25,6 @@ pub(crate) fn parse_metadata(
     tag_schema: &TagSchema,
 ) -> Result<(TagSet, HashSet<ContentDiagnostic>), ParseMetadataError> {
     const RDF_NS: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
-    const TAG_NS: &str = "galerie";
 
     #[derive(PartialEq)]
     enum ElementContext {
@@ -53,7 +58,7 @@ pub(crate) fn parse_metadata(
                     && ancestors.last() == Some(&ElementContext::Rdf);
 
                 if ancestors.last() == Some(&ElementContext::Description)
-                    && namespace == ResolveResult::Bound(Namespace(TAG_NS))
+                    && namespace == ResolveResult::Bound(Namespace(TAG_NAMESPACE_URI))
                 {
                     register(local.as_ref());
                 }
@@ -61,7 +66,7 @@ pub(crate) fn parse_metadata(
                     for attribute in element.attributes() {
                         let attribute = attribute.map_err(quick_xml::Error::from)?;
                         let (namespace, local) = reader.resolver().resolve_attribute(attribute.key);
-                        if namespace == ResolveResult::Bound(Namespace(TAG_NS)) {
+                        if namespace == ResolveResult::Bound(Namespace(TAG_NAMESPACE_URI)) {
                             register(local.as_ref());
                         }
                     }
@@ -107,7 +112,7 @@ fn parse_xmp(
 
     for property in metadata.iter(
         IterOptions::default()
-            .schema_ns("galerie")
+            .schema_ns(TAG_NAMESPACE_URI)
             .immediate_children_only(),
     ) {
         let local_key = strip_namespace_from_key(&property.name);
@@ -190,6 +195,7 @@ fn strip_namespace_from_key(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::tag::{IntegerTagValue, RealTagValue, TextTagValue};
 
     fn xmp(properties: &str) -> String {
         format!(

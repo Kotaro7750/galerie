@@ -1,13 +1,13 @@
 use std::collections::BinaryHeap;
-use std::fs::{self};
-use std::io;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
 use std::num::NonZeroU64;
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use async_trait::async_trait;
 
-use crate::domain::tag::parse::parse_metadata;
+use crate::domain::tag::xmp::parse::parse_metadata;
 use crate::domain::tag_schema::TagSchema;
 use crate::domain::{Content, ContentId, Error, MediaType};
 use crate::port::ContentStorage;
@@ -53,10 +53,10 @@ impl FileSystemContentStorage {
             .join(format!("{}.xmp", id.as_ref()))
     }
 
-    fn content_file_path(&self, id: ContentId) -> PathBuf {
+    fn content_file_path(&self, id: ContentId, media_type: MediaType) -> PathBuf {
         self.contents_directory
             .clone()
-            .join(format!("{}.avif", id.as_ref()))
+            .join(format!("{}.{}", id.as_ref(), media_type.extension()))
     }
 
     /// Construct an iterator over the valid content ids retrieved from xmp files in the contents directory
@@ -76,7 +76,7 @@ impl FileSystemContentStorage {
 
     /// Check if both content file and xmp file exist and are files for the given content id
     fn has_valid_content_pair(&self, id: ContentId) -> Result<bool, io::Error> {
-        let content_file_path = self.content_file_path(id);
+        let content_file_path = self.content_file_path(id, MediaType::Avif);
         let xmp_file_path = self.xmp_file_path(id);
 
         // Check if the content file and xmp file both exist
@@ -104,7 +104,7 @@ impl FileSystemContentStorage {
 
     /// Extract mediatype for the given content id
     fn extract_media_type(&self, id: ContentId) -> Option<MediaType> {
-        let content_file_path = self.content_file_path(id);
+        let content_file_path = self.content_file_path(id, MediaType::Avif);
 
         super::media_type_from_extension(content_file_path.extension()?.to_string_lossy().as_ref())
     }
@@ -112,6 +112,74 @@ impl FileSystemContentStorage {
 
 #[async_trait]
 impl ContentStorage for FileSystemContentStorage {
+    async fn create_content_file(
+        &self,
+        id: ContentId,
+        media_type: MediaType,
+        content_bytes: &[u8],
+    ) -> Result<(url::Url, url::Url), Error> {
+        let content_path = self.content_file_path(id, media_type);
+        let content_url = format!(
+            "{}/{}.{}",
+            self.content_url_base,
+            id.as_ref(),
+            media_type.extension()
+        )
+        .parse()
+        .map_err(|e| Error::Internal(format!("Invalid content URL: {e}")))?;
+
+        let thumbnail_url = format!(
+            "{}/{}.{}",
+            self.thumbnail_url_base,
+            id.as_ref(),
+            media_type.extension()
+        )
+        .parse()
+        .map_err(|e| Error::Internal(format!("Invalid thumbnail URL: {e}")))?;
+
+        let mut content_file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&content_path)
+            .map_err(|e| Error::Internal(format!("Failed to create content file: {e}")))?;
+
+        if let Err(error) = content_file.write_all(content_bytes) {
+            drop(content_file);
+            if let Err(cleanup_error) = fs::remove_file(&content_path) {
+                tracing::warn!(%cleanup_error, path = %content_path.display(), "Failed to remove incomplete content file");
+            }
+            return Err(Error::Internal(format!(
+                "Failed to write content file: {error}"
+            )));
+        }
+
+        Ok((content_url, thumbnail_url))
+    }
+
+    async fn create_xmp_sidecar(&self, id: ContentId, xmp: &str) -> Result<(), Error> {
+        let xmp_path = self.xmp_file_path(id);
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&xmp_path)
+            .map_err(|e| Error::Internal(format!("Failed to create XMP file: {e}")))?;
+        if let Err(error) = file.write_all(xmp.as_bytes()) {
+            drop(file);
+            if let Err(cleanup_error) = fs::remove_file(&xmp_path) {
+                tracing::warn!(%cleanup_error, path = %xmp_path.display(), "Failed to remove incomplete XMP file");
+            }
+            return Err(Error::Internal(format!(
+                "Failed to write XMP file: {error}"
+            )));
+        }
+        Ok(())
+    }
+
+    async fn delete_content_file(&self, id: ContentId, media_type: MediaType) -> Result<(), Error> {
+        fs::remove_file(self.content_file_path(id, media_type))
+            .map_err(|e| Error::Internal(format!("Failed to remove content file: {e}")))
+    }
+
     async fn scan_contents(
         &self,
         tag_schema: &TagSchema,

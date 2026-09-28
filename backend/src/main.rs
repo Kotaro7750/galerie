@@ -12,7 +12,10 @@ use http::{
     header::{AUTHORIZATION, CONTENT_TYPE},
 };
 use tower_http::cors::CorsLayer;
-use usecase::{ClearContentAccessUseCase, ConfigureContentAccessUseCase, GetContentUseCase};
+use usecase::{
+    ClearContentAccessUseCase, ConfigureContentAccessUseCase, CreateContentUseCase,
+    GetContentUseCase,
+};
 
 use crate::config::GalerieConfig;
 use crate::infrastructure::metadata_index::InMemoryMetadataIndex;
@@ -45,14 +48,14 @@ async fn main() -> anyhow::Result<()> {
     let tag_schema = tag_schema_storage.get_tag_schema().await?;
 
     let content_storage = config.content_storage().construct_content_storage().await?;
-    let mut metadata_index = InMemoryMetadataIndex::new();
+    let metadata_index = InMemoryMetadataIndex::new();
 
     let mut cursor = None;
     loop {
         let (contents, next_cursor) = content_storage
             .scan_contents(&tag_schema, NonZeroU64::new(100).unwrap(), cursor)
             .await?;
-        metadata_index.add_contents(&contents)?;
+        metadata_index.add_contents(&contents).await?;
         cursor = next_cursor;
 
         if cursor.is_none() {
@@ -68,6 +71,7 @@ async fn main() -> anyhow::Result<()> {
         tag_schema,
         ListContentsUseCase::new(metadata_index.clone()),
         GetContentUseCase::new(metadata_index.clone()),
+        CreateContentUseCase::new(content_storage, metadata_index.clone()),
     );
     let content_access_controller = ContentAccessController::new(
         ConfigureContentAccessUseCase::new(content_access_configurator.clone()),

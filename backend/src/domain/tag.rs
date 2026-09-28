@@ -1,17 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use ordered_float::NotNan;
-use quick_xml::{
-    events::Event,
-    name::{Namespace, ResolveResult},
-    reader::NsReader,
-};
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 use unicode_xid::UnicodeXID;
-use xmp_toolkit::{IterOptions, XmpMeta, XmpProperty};
 
-pub(crate) mod parse;
+pub(crate) mod xmp;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Tag {

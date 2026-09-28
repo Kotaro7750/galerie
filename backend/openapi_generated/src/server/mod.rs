@@ -35,7 +35,7 @@ where
             delete(clear_content_access::<I, A, E>).post(configure_content_access::<I, A, E>)
         )
         .route("/api/v0/contents",
-            get(list_contents::<I, A, E>)
+            get(list_contents::<I, A, E>).post(create_content::<I, A, E>)
         )
         .route("/api/v0/contents/{content_id}",
             get(get_content::<I, A, E>)
@@ -204,6 +204,167 @@ where
                                                   response.body(Body::from(body_content))
                                                 },
                                                 apis::content_access::ConfigureContentAccessResponse::Status500
+                                                    (body)
+                                                => {
+                                                let mut response = Response::builder();
+                                                  let mut response = response.status(500);
+                                                  {
+                                                    let mut response_headers = response.headers_mut().unwrap();
+                                                    response_headers.insert(
+                                                        CONTENT_TYPE,
+                                                        HeaderValue::from_static("application/problem+json"));
+                                                  }
+
+                                                  let body_content =  tokio::task::spawn_blocking(move ||
+                                                      serde_json::to_vec(&body).map_err(|e| {
+                                                        error!(error = ?e);
+                                                        StatusCode::INTERNAL_SERVER_ERROR
+                                                      })).await.unwrap()?;
+                                                  response.body(Body::from(body_content))
+                                                },
+                                            },
+                                            Err(why) => {
+                                                    // Application code returned an error. This should not happen, as the implementation should
+                                                    // return a valid response.
+                                                    return api_impl.as_ref().handle_error(&method, &host, &cookies, why).await;
+                                            },
+                                        };
+
+
+                                        resp.map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR })
+}
+
+
+#[tracing::instrument(skip_all)]
+fn create_content_validation(
+) -> std::result::Result<(
+), ValidationErrors>
+{
+
+Ok((
+))
+}
+/// CreateContent - POST /api/v0/contents
+#[tracing::instrument(skip_all)]
+async fn create_content<I, A, E>(
+  method: Method,
+  TypedHeader(host): TypedHeader<Host>,
+  cookies: CookieJar,
+ State(api_impl): State<I>,
+  body: Multipart,
+) -> Result<Response, StatusCode>
+where
+    I: AsRef<A> + Send + Sync,
+    A: apis::contents::Contents<E> + Send + Sync,
+    E: std::fmt::Debug + Send + Sync + 'static,
+        {
+
+
+
+
+      #[allow(clippy::redundant_closure)]
+      let validation = tokio::task::spawn_blocking(move ||
+    create_content_validation(
+    )
+  ).await.unwrap();
+
+  let Ok((
+  )) = validation else {
+    return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Body::from(validation.unwrap_err().to_string()))
+            .map_err(|_| StatusCode::BAD_REQUEST);
+  };
+
+
+
+  let result = api_impl.as_ref().create_content(
+      
+      &method,
+      &host,
+      &cookies,
+          body,
+  ).await;
+
+  let resp = match result {
+                                            Ok(rsp) => match rsp {
+                                                apis::contents::CreateContentResponse::Status201
+                                                    {
+                                                        body,
+                                                        location
+                                                    }
+                                                => {
+                                                let mut response = Response::builder();
+                    if let Some(location) = location {
+                        let location = match header::IntoHeaderValue(location).try_into() {
+                            Ok(val) => val,
+                            Err(e) => {
+                                return Response::builder()
+                                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                        .body(Body::from(format!("An internal server error occurred handling location header - {e}"))).map_err(|e| { error!(error = ?e); StatusCode::INTERNAL_SERVER_ERROR });
+                            }
+                        };
+
+                        let mut response_headers = response.headers_mut().unwrap();
+                        response_headers.insert(
+                              HeaderName::from_static("location"),
+                              location
+                        );
+                    }
+                                                  let mut response = response.status(201);
+                                                  {
+                                                    let mut response_headers = response.headers_mut().unwrap();
+                                                    response_headers.insert(
+                                                        CONTENT_TYPE,
+                                                        HeaderValue::from_static("application/json"));
+                                                  }
+
+                                                  let body_content =  tokio::task::spawn_blocking(move ||
+                                                      serde_json::to_vec(&body).map_err(|e| {
+                                                        error!(error = ?e);
+                                                        StatusCode::INTERNAL_SERVER_ERROR
+                                                      })).await.unwrap()?;
+                                                  response.body(Body::from(body_content))
+                                                },
+                                                apis::contents::CreateContentResponse::Status400
+                                                    (body)
+                                                => {
+                                                let mut response = Response::builder();
+                                                  let mut response = response.status(400);
+                                                  {
+                                                    let mut response_headers = response.headers_mut().unwrap();
+                                                    response_headers.insert(
+                                                        CONTENT_TYPE,
+                                                        HeaderValue::from_static("application/problem+json"));
+                                                  }
+
+                                                  let body_content =  tokio::task::spawn_blocking(move ||
+                                                      serde_json::to_vec(&body).map_err(|e| {
+                                                        error!(error = ?e);
+                                                        StatusCode::INTERNAL_SERVER_ERROR
+                                                      })).await.unwrap()?;
+                                                  response.body(Body::from(body_content))
+                                                },
+                                                apis::contents::CreateContentResponse::Status415
+                                                    (body)
+                                                => {
+                                                let mut response = Response::builder();
+                                                  let mut response = response.status(415);
+                                                  {
+                                                    let mut response_headers = response.headers_mut().unwrap();
+                                                    response_headers.insert(
+                                                        CONTENT_TYPE,
+                                                        HeaderValue::from_static("application/problem+json"));
+                                                  }
+
+                                                  let body_content =  tokio::task::spawn_blocking(move ||
+                                                      serde_json::to_vec(&body).map_err(|e| {
+                                                        error!(error = ?e);
+                                                        StatusCode::INTERNAL_SERVER_ERROR
+                                                      })).await.unwrap()?;
+                                                  response.body(Body::from(body_content))
+                                                },
+                                                apis::contents::CreateContentResponse::Status500
                                                     (body)
                                                 => {
                                                 let mut response = Response::builder();

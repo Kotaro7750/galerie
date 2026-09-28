@@ -1,17 +1,20 @@
 use std::num::NonZeroU64;
 
 use async_trait::async_trait;
+use aws_sdk_s3::error::ProvideErrorMetadata;
 use aws_sdk_s3::{
     Client,
     config::http::HttpResponse,
     error::DisplayErrorContext,
     operation::list_objects_v2::{ListObjectsV2Error, ListObjectsV2Output},
+    primitives::ByteStream,
 };
 use aws_smithy_async::future::pagination_stream::PaginationStream;
 
 use crate::{
     domain::{
-        Content, ContentId, Error, MediaType, tag::parse::parse_metadata, tag_schema::TagSchema,
+        Content, ContentId, Error, MediaType, tag::xmp::parse::parse_metadata,
+        tag_schema::TagSchema,
     },
     port::ContentStorage,
 };
@@ -48,6 +51,116 @@ impl S3ContentStorage {
 
 #[async_trait]
 impl ContentStorage for S3ContentStorage {
+    async fn create_content_file(
+        &self,
+        id: ContentId,
+        media_type: MediaType,
+        content_bytes: &[u8],
+    ) -> Result<(url::Url, url::Url), Error> {
+        let content_key = format!(
+            "{}/{}.{}",
+            self.content_prefix,
+            id.as_ref(),
+            media_type.extension()
+        );
+        let content_url = format!(
+            "{}/{}.{}",
+            self.content_url_base,
+            id.as_ref(),
+            media_type.extension()
+        )
+        .parse()
+        .map_err(|e| Error::Internal(format!("Invalid content URL: {e}")))?;
+
+        let thumbnail_url = format!(
+            "{}/{}.{}",
+            self.thumbnail_url_base,
+            id.as_ref(),
+            media_type.extension()
+        )
+        .parse()
+        .map_err(|e| Error::Internal(format!("Invalid thumbnail URL: {e}")))?;
+
+        if let Err(error) = self
+            .client
+            .put_object()
+            .bucket(&self.bucket_name)
+            .key(&content_key)
+            .content_type(mime::Mime::from(media_type).to_string())
+            .if_none_match("*")
+            .body(ByteStream::from(content_bytes.to_vec()))
+            .send()
+            .await
+        {
+            if error.as_service_error().and_then(|e| e.code()) != Some("PreconditionFailed") {
+                if let Err(cleanup_error) = self
+                    .client
+                    .delete_object()
+                    .bucket(&self.bucket_name)
+                    .key(&content_key)
+                    .send()
+                    .await
+                {
+                    tracing::warn!(%cleanup_error, %content_key, "Failed to remove possibly created content object");
+                }
+            }
+            return Err(Error::Internal(format!(
+                "Failed to create content object: {error}"
+            )));
+        }
+
+        Ok((content_url, thumbnail_url))
+    }
+
+    async fn create_xmp_sidecar(&self, id: ContentId, xmp: &str) -> Result<(), Error> {
+        let xmp_key = format!("{}/{}.xmp", self.xmp_prefix, id.as_ref());
+        if let Err(error) = self
+            .client
+            .put_object()
+            .bucket(&self.bucket_name)
+            .key(&xmp_key)
+            .content_type("application/rdf+xml")
+            .if_none_match("*")
+            .body(ByteStream::from(xmp.as_bytes().to_vec()))
+            .send()
+            .await
+        {
+            if error.as_service_error().and_then(|e| e.code()) != Some("PreconditionFailed") {
+                if let Err(cleanup_error) = self
+                    .client
+                    .delete_object()
+                    .bucket(&self.bucket_name)
+                    .key(&xmp_key)
+                    .send()
+                    .await
+                {
+                    tracing::warn!(%cleanup_error, %xmp_key, "Failed to remove possibly created XMP object");
+                }
+            }
+            return Err(Error::Internal(format!(
+                "Failed to create XMP object: {error}"
+            )));
+        }
+        Ok(())
+    }
+
+    async fn delete_content_file(&self, id: ContentId, media_type: MediaType) -> Result<(), Error> {
+        let content_key = format!(
+            "{}/{}.{}",
+            self.content_prefix,
+            id.as_ref(),
+            media_type.extension()
+        );
+        self.client
+            .delete_object()
+            .bucket(&self.bucket_name)
+            .key(&content_key)
+            .send()
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to remove content object: {e}")))?;
+        Ok(())
+    }
+
     async fn scan_contents(
         &self,
         tag_schema: &TagSchema,
@@ -275,7 +388,12 @@ mod tests {
 
     use aws_sdk_s3::{
         Client,
-        operation::{get_object::GetObjectOutput, list_objects_v2::ListObjectsV2Output},
+        operation::{
+            delete_object::DeleteObjectOutput,
+            get_object::GetObjectOutput,
+            list_objects_v2::ListObjectsV2Output,
+            put_object::{PutObjectError, PutObjectOutput},
+        },
         primitives::ByteStream,
         types::Object,
     };
@@ -283,7 +401,7 @@ mod tests {
 
     use super::S3ContentStorage;
     use crate::{
-        domain::{ContentId, tag_schema::TagSchema},
+        domain::{ContentId, MediaType, tag_schema::TagSchema},
         port::ContentStorage,
     };
 
@@ -305,6 +423,79 @@ mod tests {
 
     fn object(key: &str) -> Object {
         Object::builder().key(key).build()
+    }
+
+    #[tokio::test]
+    async fn create_content_file_puts_object_with_content_type_and_create_condition() {
+        let id = ContentId::from_str("22222222-2222-4222-8222-222222222222").unwrap();
+        let put_content = mock!(Client::put_object)
+            .match_requests(|request| {
+                request.key() == Some("contents/22222222-2222-4222-8222-222222222222.avif")
+                    && request.content_type() == Some("image/avif")
+                    && request.if_none_match() == Some("*")
+            })
+            .then_output(|| PutObjectOutput::builder().build());
+        let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, [&put_content]);
+        let storage = storage(client);
+        storage
+            .create_content_file(id, MediaType::Avif, b"avif")
+            .await
+            .unwrap();
+        assert_eq!(put_content.num_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn create_xmp_sidecar_puts_object_with_create_condition() {
+        let id = ContentId::from_str("22222222-2222-4222-8222-222222222222").unwrap();
+        let put_xmp = mock!(Client::put_object)
+            .match_requests(|request| {
+                request.key() == Some("metadata/22222222-2222-4222-8222-222222222222.xmp")
+                    && request.if_none_match() == Some("*")
+            })
+            .then_output(|| PutObjectOutput::builder().build());
+        let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, [&put_xmp]);
+        storage(client).create_xmp_sidecar(id, XMP).await.unwrap();
+        assert_eq!(put_xmp.num_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn create_xmp_sidecar_removes_xmp_object_when_put_fails() {
+        let id = ContentId::from_str("22222222-2222-4222-8222-222222222222").unwrap();
+        let xmp_key = "metadata/22222222-2222-4222-8222-222222222222.xmp";
+        let put_xmp = mock!(Client::put_object)
+            .match_requests(move |request| {
+                request.key() == Some(xmp_key) && request.if_none_match() == Some("*")
+            })
+            .then_error(|| {
+                PutObjectError::InvalidRequest(
+                    aws_sdk_s3::types::error::InvalidRequest::builder().build(),
+                )
+            });
+        let delete_xmp = mock!(Client::delete_object)
+            .match_requests(move |request| request.key() == Some(xmp_key))
+            .then_output(|| DeleteObjectOutput::builder().build());
+        let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, [&put_xmp, &delete_xmp]);
+        let storage = storage(client);
+        let result = storage.create_xmp_sidecar(id, XMP).await;
+        assert!(result.is_err());
+        assert_eq!(put_xmp.num_calls(), 1);
+        assert_eq!(delete_xmp.num_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn delete_content_file_deletes_object_for_content_id() {
+        let id = ContentId::from_str("22222222-2222-4222-8222-222222222222").unwrap();
+        let delete_content = mock!(Client::delete_object)
+            .match_requests(|request| {
+                request.key() == Some("contents/22222222-2222-4222-8222-222222222222.avif")
+            })
+            .then_output(|| DeleteObjectOutput::builder().build());
+        let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, [&delete_content]);
+        storage(client)
+            .delete_content_file(id, MediaType::Avif)
+            .await
+            .unwrap();
+        assert_eq!(delete_content.num_calls(), 1);
     }
 
     #[tokio::test]

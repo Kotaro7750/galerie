@@ -72,6 +72,7 @@ pub fn check_xss_map<T>(v: &std::collections::HashMap<String, T>) -> std::result
 
 
 
+
     #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
     #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
     pub struct GetContentPathParams {
@@ -741,6 +742,121 @@ impl std::ops::Deref for ContentId {
 impl std::ops::DerefMut for ContentId {
     fn deref_mut(&mut self) -> &mut String {
         &mut self.0
+    }
+}
+
+
+
+/// コンテンツに設定するメタデータ
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct ContentMetadataInput {
+    /// 設定するタグ。タグがない場合は空配列を指定する。
+    #[serde(rename = "tags")]
+          #[validate(nested)]
+    pub tags: Vec<models::Tag>,
+
+}
+
+
+
+impl ContentMetadataInput {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(tags: Vec<models::Tag>, ) -> ContentMetadataInput {
+        ContentMetadataInput {
+ tags,
+        }
+    }
+}
+
+/// Converts the ContentMetadataInput value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for ContentMetadataInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+            // Skipping tags in query parameter serialization
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a ContentMetadataInput value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for ContentMetadataInput {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub tags: Vec<Vec<models::Tag>>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing ContentMetadataInput".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    "tags" => return std::result::Result::Err("Parsing a container in this style is not supported in ContentMetadataInput".to_string()),
+                    _ => return std::result::Result::Err("Unexpected key while parsing ContentMetadataInput".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(ContentMetadataInput {
+            tags: intermediate_rep.tags.into_iter().next().ok_or_else(|| "tags missing in ContentMetadataInput".to_string())?,
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<ContentMetadataInput> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<ContentMetadataInput>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<ContentMetadataInput>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for ContentMetadataInput - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<ContentMetadataInput> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <ContentMetadataInput as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into ContentMetadataInput - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
     }
 }
 
@@ -6170,6 +6286,189 @@ impl std::str::FromStr for UnparseableTagValueDiagnosticKind {
         }
     }
 }
+
+
+/// 対応していないメディアタイプを表すProblem Details
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct UnsupportedMediaTypeProblem {
+    /// エラー種別を識別するURI参照
+    #[serde(rename = "type")]
+          #[validate(custom(function = "check_xss_string"))]
+    pub r_type: String,
+
+    /// エラー種別の短い説明
+    #[serde(rename = "title")]
+          #[validate(custom(function = "check_xss_string"))]
+    pub title: String,
+
+    /// Note: inline enums are not fully supported by openapi-generator
+    #[serde(rename = "status")]
+    pub status: i32,
+
+    /// このエラーの具体的な説明
+    #[serde(rename = "detail")]
+          #[validate(custom(function = "check_xss_string"))]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub detail: Option<String>,
+
+    /// このエラー発生を識別するURI参照
+    #[serde(rename = "instance")]
+          #[validate(custom(function = "check_xss_string"))]
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub instance: Option<String>,
+
+}
+
+
+
+impl UnsupportedMediaTypeProblem {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(title: String, status: i32, ) -> UnsupportedMediaTypeProblem {
+        UnsupportedMediaTypeProblem {
+ r_type: r#"about:blank"#.to_string(),
+ title,
+ status,
+ detail: None,
+ instance: None,
+        }
+    }
+}
+
+/// Converts the UnsupportedMediaTypeProblem value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for UnsupportedMediaTypeProblem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+
+            Some("type".to_string()),
+            Some(self.r_type.to_string()),
+
+
+            Some("title".to_string()),
+            Some(self.title.to_string()),
+
+
+            Some("status".to_string()),
+            Some(self.status.to_string()),
+
+
+            self.detail.as_ref().map(|detail| {
+                [
+                    "detail".to_string(),
+                    detail.to_string(),
+                ].join(",")
+            }),
+
+
+            self.instance.as_ref().map(|instance| {
+                [
+                    "instance".to_string(),
+                    instance.to_string(),
+                ].join(",")
+            }),
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a UnsupportedMediaTypeProblem value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for UnsupportedMediaTypeProblem {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub r_type: Vec<String>,
+            pub title: Vec<String>,
+            pub status: Vec<i32>,
+            pub detail: Vec<String>,
+            pub instance: Vec<String>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing UnsupportedMediaTypeProblem".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "type" => intermediate_rep.r_type.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "title" => intermediate_rep.title.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "status" => intermediate_rep.status.push(<i32 as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "detail" => intermediate_rep.detail.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "instance" => intermediate_rep.instance.push(<String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    _ => return std::result::Result::Err("Unexpected key while parsing UnsupportedMediaTypeProblem".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(UnsupportedMediaTypeProblem {
+            r_type: intermediate_rep.r_type.into_iter().next().ok_or_else(|| "type missing in UnsupportedMediaTypeProblem".to_string())?,
+            title: intermediate_rep.title.into_iter().next().ok_or_else(|| "title missing in UnsupportedMediaTypeProblem".to_string())?,
+            status: intermediate_rep.status.into_iter().next().ok_or_else(|| "status missing in UnsupportedMediaTypeProblem".to_string())?,
+            detail: intermediate_rep.detail.into_iter().next(),
+            instance: intermediate_rep.instance.into_iter().next(),
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<UnsupportedMediaTypeProblem> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<UnsupportedMediaTypeProblem>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<UnsupportedMediaTypeProblem>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for UnsupportedMediaTypeProblem - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<UnsupportedMediaTypeProblem> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <UnsupportedMediaTypeProblem as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into UnsupportedMediaTypeProblem - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
 
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
