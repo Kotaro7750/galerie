@@ -870,7 +870,7 @@ dependencies = [
 
 [[package]]
 name = "backend"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "aliri",
  "aliri_clock",
