@@ -129,6 +129,99 @@ test('moves within the opened search results without fetching more pages and sta
   expect(listRequests).toBe(1);
 });
 
+test('slideshow shares playback controls with fullscreen and restores excluded search results', async ({ page }) => {
+  const entries = [content(0), content(1), content(2)].map((item) => ({ ...item, contentUrl: `https://media.test/${item.id}.avif` }));
+  await page.route('**/api/v0/contents?*', (route) => route.fulfill({ json: { items: entries } }));
+  await page.route('**/api/v0/contents/*', (route) => {
+    const item = entries.find(({ id: itemId }) => route.request().url().endsWith(`/${itemId}`));
+    return route.fulfill(item ? { json: item } : { status: 404 });
+  });
+  await mockImages(page);
+  await page.goto('/#/contents');
+  await page.getByRole('link', { name: '画像 1 を開く', exact: true }).click();
+  const controls = page.getByRole('group', { name: 'スライドショー' });
+  const [controlsBounds, backBounds] = await Promise.all([
+    controls.boundingBox(), page.getByRole('link', { name: 'ギャラリーに戻る' }).boundingBox(),
+  ]);
+  expect(controlsBounds).not.toBeNull();
+  expect(backBounds).not.toBeNull();
+  expect(controlsBounds!.y + controlsBounds!.height).toBeLessThanOrEqual(backBounds!.y);
+  await expect(controls).toContainText('3 / 3');
+  const eye = controls.getByRole('button', { name: '表示中の画像をスライドショー対象から除外' });
+  await expect(eye.locator('svg')).toHaveClass(/lucide-eye-off/);
+  await expect(eye).toHaveAttribute('aria-pressed', 'false');
+  await expect(eye).toHaveClass(/btn-ghost/);
+  await expect(eye.locator('..')).toHaveAttribute('data-tip', '再生対象（クリックで除外）');
+  await expect(controls.getByRole('button', { name: 'スライドショー対象をリセット' }).locator('..')).toHaveAttribute('data-tip', '除外した画像をすべて戻す');
+  await expect(controls.getByRole('button', { name: 'スライドショー対象をリセット' }).locator('svg')).toHaveClass(/lucide-funnel-x/);
+  await expect(controls.locator('svg.lucide-timer')).toBeVisible();
+  const intervalSlider = controls.getByRole('slider', { name: 'スライドショーの表示間隔' });
+  await expect(intervalSlider).toHaveAttribute('max', '15');
+  await intervalSlider.fill('1');
+  await eye.click();
+  await expect(controls).toContainText('2 / 3');
+  await expect(eye).toHaveAttribute('aria-pressed', 'true');
+  await expect(eye).toHaveClass(/btn-primary/);
+  await controls.getByRole('button', { name: 'スライドショーを再生' }).click();
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[1].id}$`));
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[2].id}$`));
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[1].id}$`));
+  await controls.getByRole('button', { name: 'スライドショーを一時停止' }).click();
+  await page.getByRole('button', { name: '全画面表示', exact: true }).click();
+  const fullscreenControls = page.locator(':fullscreen').getByRole('group', { name: 'スライドショー' });
+  await expect(fullscreenControls).toContainText('2 / 3');
+  await expect(fullscreenControls).toContainText('1s');
+  const fullscreenEye = fullscreenControls.getByRole('button', { name: '表示中の画像をスライドショー対象から除外' });
+  await fullscreenEye.click();
+  await expect(fullscreenControls).toContainText('1 / 3');
+  await expect(fullscreenControls.getByRole('button', { name: 'スライドショーを再生' })).toBeDisabled();
+  await expect(fullscreenEye).toHaveAttribute('aria-pressed', 'true');
+  await expect(fullscreenEye).toHaveClass(/btn-primary/);
+  await expect(fullscreenEye.locator('..')).toHaveAttribute('data-tip', '再生対象から除外中（クリックで戻す）');
+  await fullscreenEye.click();
+  await expect(fullscreenControls).toContainText('2 / 3');
+  await expect(fullscreenEye).toHaveAttribute('aria-pressed', 'false');
+  await expect(fullscreenEye).toHaveClass(/btn-ghost/);
+  await fullscreenEye.click();
+  await expect(fullscreenControls).toContainText('1 / 3');
+  await fullscreenControls.getByRole('button', { name: 'スライドショー対象をリセット' }).click();
+  await expect(fullscreenControls).toContainText('3 / 3');
+  await fullscreenControls.getByRole('button', { name: 'スライドショーを再生' }).click();
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[2].id}$`));
+  await fullscreenControls.getByRole('button', { name: 'スライドショーを一時停止' }).click();
+  await expect(page.locator(':fullscreen')).toHaveCount(1);
+});
+
+test('shuffle visits each target once before repeating and keeps its setting in fullscreen', async ({ page }) => {
+  const entries = [content(0), content(1), content(2), content(3)];
+  await page.addInitScript(() => { Math.random = () => 0; });
+  await page.route('**/api/v0/contents?*', (route) => route.fulfill({ json: { items: entries } }));
+  await page.route('**/api/v0/contents/*', (route) => {
+    const item = entries.find(({ id: itemId }) => route.request().url().endsWith(`/${itemId}`));
+    return route.fulfill(item ? { json: item } : { status: 404 });
+  });
+  await mockImages(page);
+  await page.goto('/#/contents');
+  await page.getByRole('link', { name: '画像 1 を開く', exact: true }).click();
+  const controls = page.getByRole('group', { name: 'スライドショー' });
+  await controls.getByRole('slider', { name: 'スライドショーの表示間隔' }).fill('1');
+  const shuffle = controls.getByRole('button', { name: 'シャッフル再生' });
+  await shuffle.click();
+  await expect(shuffle).toHaveAttribute('aria-pressed', 'true');
+  await controls.getByRole('button', { name: 'スライドショーを再生' }).click();
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[2].id}$`));
+  await page.getByRole('button', { name: '全画面表示', exact: true }).click();
+  const fullscreenControls = page.locator(':fullscreen').getByRole('group', { name: 'スライドショー' });
+  await expect(fullscreenControls.getByRole('button', { name: 'シャッフル再生' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[3].id}$`));
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[1].id}$`));
+  await fullscreenControls.getByRole('button', { name: 'スライドショーを一時停止' }).click();
+  await fullscreenControls.getByRole('button', { name: 'シャッフル再生' }).click();
+  await expect(fullscreenControls.getByRole('button', { name: 'シャッフル再生' })).toHaveAttribute('aria-pressed', 'false');
+  await fullscreenControls.getByRole('button', { name: 'スライドショーを再生' }).click();
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[2].id}$`));
+});
+
 test('mobile flick changes the selected content in normal and fullscreen views', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'touch gesture');
   const entries = [content(0), content(1), content(2)].map((item) => ({
