@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import { Configuration, ContentAccessApi, ContentsApi, ResponseError } from './generated';
+import { Configuration, ContentAccessApi, ContentsApi, ResponseError, TagSchemaApi } from './generated';
 import { authEnabled, getAccessToken } from '../auth/config';
 
 export class ApiError extends Error {
@@ -22,6 +22,7 @@ const apiConfiguration = new Configuration({
 
 export const contentAccessApi = new ContentAccessApi(apiConfiguration);
 export const contentsApi = new ContentsApi(apiConfiguration);
+export const tagSchemaApi = new TagSchemaApi(apiConfiguration);
 
 // Keep HTTP error presentation outside the generated client so regeneration is safe.
 export async function apiRequest<T>(request: Promise<T>, fallbackMessage?: string): Promise<T> {

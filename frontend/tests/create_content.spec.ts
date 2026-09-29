@@ -1,12 +1,14 @@
 import { expect, test } from '@playwright/test';
 import { mockContentAccess } from './content_access';
+import { enterAdditionalTagKey, mockTagSchema } from './tag_schema';
 
 const sample = '../sample/00065786-f916-4e2c-85bc-3db5e4c0cb71.avif';
 const id = '10000000-0000-4000-8000-000000000001';
 
-test.beforeEach(async ({ page }) => { await mockContentAccess(page); });
+test.beforeEach(async ({ page }) => { await mockContentAccess(page); await mockTagSchema(page); });
 
 test('selects and previews a local AVIF, then sends typed tags only on registration', async ({ page }) => {
+  await mockTagSchema(page, { version: '0', allowAdditionalTags: true, required: [], optional: [{ key: 'rating', type: 'integer' }] });
   const posts: { contentType: string; body: string }[] = [];
   await page.route('**/api/v0/contents', async (route) => {
     const request = route.request();
@@ -47,20 +49,26 @@ test('selects and previews a local AVIF, then sends typed tags only on registrat
   await expect(caption.getByText(/MiB/)).toBeVisible();
   await expect(caption.getByRole('img', { name: '解像度（ピクセル）' })).toBeVisible();
   await expect(page.getByRole('button', { name: '登録する' }).locator('svg')).toHaveClass(/lucide-save/);
-  await page.getByLabel('タグ名').fill('category');
+  await enterAdditionalTagKey(page, 'category');
   await page.getByLabel('タグの型').selectOption('text');
   await page.getByLabel('値 1', { exact: true }).fill('landscape');
   await page.getByRole('button', { name: 'タグを追加' }).click();
-  await page.getByLabel('タグ名').fill('rating');
-  await page.getByLabel('タグの型').selectOption('integer');
+  await page.getByLabel('タグ名', { exact: true }).fill('rating');
+  await expect(page.getByLabel('タグの型')).toHaveCount(0);
   await page.getByLabel('値 1', { exact: true }).fill('5');
   await page.getByRole('button', { name: 'タグを追加' }).click();
-  await page.getByLabel('タグ名').fill('authors');
+  await enterAdditionalTagKey(page, 'authors');
   await page.getByLabel('タグの型').selectOption('textSet');
   await page.getByLabel('値 1', { exact: true }).fill('Alice');
   await page.getByRole('button', { name: '値を追加' }).click();
+  await page.getByLabel('値 2', { exact: true }).fill('Alice');
+  await expect(page.getByText('集合に同じ値は追加できません。').first()).toBeVisible();
   await page.getByLabel('値 2', { exact: true }).fill('Bob');
+  await expect(page.getByText('集合に同じ値は追加できません。')).toHaveCount(0);
   await page.getByRole('button', { name: 'タグを追加' }).click();
+  await expect(page.getByLabel('category: landscape').locator('.badge')).toHaveClass(/badge-accent/);
+  await expect(page.getByLabel('rating: 5').locator('.badge')).toHaveClass(/badge-secondary/);
+  await expect(page.getByLabel('authors: Alice, Bob').locator('.badge')).toHaveClass(/badge-accent/);
   expect(posts).toHaveLength(0);
   await page.getByRole('button', { name: '登録する' }).click();
   await expect(page).toHaveURL(new RegExp(`#\\/contents\\/${id}$`));
@@ -69,6 +77,138 @@ test('selects and previews a local AVIF, then sends typed tags only on registrat
   expect(posts[0].body).toContain('Content-Type: image/avif');
   expect(posts[0].body).toContain('Content-Type: application/json');
   expect(posts[0].body).toContain('"tags":[{"key":"category","type":"text","value":"landscape"},{"key":"rating","type":"integer","value":5},{"key":"authors","type":"textSet","values":["Alice","Bob"]}]');
+});
+
+test('blocks registration until required and defined tags satisfy the schema', async ({ page }) => {
+  await mockTagSchema(page, {
+    version: '0', allowAdditionalTags: false,
+    required: [{ key: 'rating', type: 'integer', min: 1, max: 5 }],
+    optional: [{ key: 'category', type: 'text', allowedValues: ['landscape', 'abstract'] }, { key: 'title', type: 'text', minLength: 2, maxLength: 5 }],
+  });
+  let posts = 0;
+  await page.route('**/api/v0/contents', (route) => { posts++; return route.fulfill({ status: 201, json: { id, mediaType: 'image/avif', contentUrl: '/created.avif', thumbnailUrl: '/created.avif', tags: [], diagnostics: [] } }); });
+  await page.goto('/#/contents/new');
+  await page.getByLabel('アップロードするファイル').setInputFiles(sample);
+  await expect(page.getByRole('button', { name: '登録する' })).toBeDisabled();
+  await expect(page.getByLabel('タグスキーマの確認結果')).toContainText('必須タグ rating を追加してください。');
+  const key = page.getByLabel('タグ名', { exact: true });
+  await key.focus();
+  await expect(page.getByRole('group', { name: 'Required' }).getByRole('option', { name: 'rating' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Optional' }).getByRole('option', { name: 'category' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Required' }).getByText('Required')).toHaveClass(/bg-base-200/);
+  await expect(page.getByRole('group', { name: 'Optional' }).getByText('Optional')).toHaveClass(/bg-base-200/);
+  await key.fill('rating');
+  await expect(key.locator('..').locator('svg')).toHaveClass(/text-primary/);
+  await expect(page.getByLabel('タグの型')).toHaveCount(0);
+  await expect(page.getByRole('img', { name: '必須タグ', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('img', { name: '必須の整数タグ' })).toHaveCount(0);
+  await expect(page.getByText('必須 · 整数')).toHaveCount(0);
+  await expect(page.getByLabel('値 1', { exact: true })).toHaveAttribute('type', 'number');
+  await expect(page.getByLabel('値 1', { exact: true })).toHaveAttribute('min', '1');
+  await expect(page.getByLabel('値 1', { exact: true })).toHaveAttribute('max', '5');
+  await page.getByLabel('値 1', { exact: true }).fill('0');
+  await expect(page.getByLabel('値 1', { exact: true })).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByText('1以上で入力してください。')).toBeVisible();
+  await page.getByRole('button', { name: 'タグを追加' }).click();
+  await expect(page.getByRole('alert')).toContainText('1以上で入力してください。');
+  await page.getByLabel('値 1', { exact: true }).fill('6');
+  await page.getByRole('button', { name: 'タグを追加' }).click();
+  await expect(page.getByRole('alert')).toContainText('5以下で入力してください。');
+  await page.getByLabel('値 1', { exact: true }).fill('3');
+  await expect(page.getByLabel('値 1', { exact: true })).toHaveAttribute('aria-invalid', 'false');
+  await expect(page.locator('.validator-hint')).toHaveCount(0);
+  await page.getByRole('button', { name: 'タグを追加' }).click();
+  await expect(page.getByLabel('rating: 3').locator('.badge')).toHaveClass(/badge-primary/);
+  await key.fill('rating');
+  expect(await key.locator('..').locator('svg').evaluate((icon) => getComputedStyle(icon).color)).toBe(
+    await page.getByLabel('rating: 3').locator('.badge').evaluate((badge) => getComputedStyle(badge).color));
+  await expect(page.getByRole('button', { name: '登録する' })).toBeEnabled();
+  await key.fill('category');
+  await expect(key.locator('..').locator('svg')).toHaveClass(/text-secondary/);
+  await expect(page.getByRole('img', { name: '必須タグ', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('img', { name: '任意のテキストタグ' })).toHaveCount(0);
+  await expect(page.getByLabel('値 1', { exact: true })).toHaveJSProperty('tagName', 'SELECT');
+  await expect(page.getByLabel('値 1', { exact: true }).locator('option')).toContainText(['値を選択', 'landscape', 'abstract']);
+  expect(posts).toBe(0);
+  await page.getByLabel('値 1', { exact: true }).selectOption('landscape');
+  await page.getByRole('button', { name: 'タグを追加' }).click();
+  await key.fill('title');
+  await page.getByLabel('値 1', { exact: true }).fill('x');
+  await expect(page.getByLabel('値 1', { exact: true })).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByText('2文字以上で入力してください。')).toBeVisible();
+  await page.getByRole('button', { name: 'タグを追加' }).click();
+  await expect(page.getByRole('alert')).toContainText('2文字以上で入力してください。');
+  await page.getByLabel('値 1', { exact: true }).fill('too long');
+  await page.getByRole('button', { name: 'タグを追加' }).click();
+  await expect(page.getByRole('alert')).toContainText('5文字以下で入力してください。');
+  await page.getByLabel('値 1', { exact: true }).fill('valid');
+  await page.getByRole('button', { name: 'タグを追加' }).click();
+  await page.getByRole('button', { name: '登録する' }).click();
+  await expect.poll(() => posts).toBe(1);
+});
+
+test('filters grouped key suggestions and accepts a new key directly', async ({ page }) => {
+  await mockTagSchema(page, {
+    version: '0', allowAdditionalTags: true,
+    required: [{ key: 'subjects', type: 'textSet' }],
+    optional: [{ key: 'category', type: 'text' }],
+  });
+  await page.goto('/#/contents/new');
+  const key = page.getByLabel('タグ名', { exact: true });
+  await expect(key).toHaveJSProperty('tagName', 'INPUT');
+  const typeBounds = await page.getByLabel('タグの型').boundingBox();
+  const keyBounds = await key.boundingBox();
+  expect(typeBounds).not.toBeNull();
+  expect(keyBounds).not.toBeNull();
+  expect(keyBounds!.x + keyBounds!.width).toBeLessThan(typeBounds!.x);
+  await expect(page.getByLabel('タグの型').locator('..').locator('svg')).toHaveClass(/lucide-list-filter/);
+  await expect(page.getByText('タグの型', { exact: true })).toHaveCount(0);
+  await key.fill('subjects');
+  await expect(key.locator('..').locator('svg')).toHaveClass(/text-primary/);
+  await expect(page.getByRole('img', { name: '必須タグ', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('img', { name: '必須のテキスト集合タグ' })).toHaveCount(0);
+  await key.fill('category');
+  await expect(key.locator('..').locator('svg')).toHaveClass(/text-secondary/);
+  await expect(page.getByLabel('タグの型')).toHaveCount(0);
+  expect((await key.boundingBox())!.x).toBe(keyBounds!.x);
+  await key.fill('');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await key.focus();
+  await expect(page.getByRole('group', { name: 'Required' }).getByRole('option', { name: 'subjects' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Optional' }).getByRole('option', { name: 'category' })).toBeVisible();
+  await enterAdditionalTagKey(page, 'other');
+  await expect(key.locator('..').locator('svg')).toHaveClass(/text-accent/);
+  await expect(page.getByRole('listbox', { name: 'タグ名の候補' })).toContainText('候補にないタグ名も入力できます');
+  await expect(page.getByLabel('タグの型').locator('option')).toContainText(['キーのみ', 'テキスト', 'テキスト集合']);
+  await expect(page.getByLabel('タグの型').locator('option')).toHaveCount(3);
+  await page.getByLabel('タグの型').selectOption('textSet');
+  expect(await page.getByLabel('タグの型').evaluate((select: HTMLSelectElement) => {
+    const style = getComputedStyle(select);
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d')!;
+    context.font = style.font;
+    return select.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) >= context.measureText(select.selectedOptions[0].text).width;
+  })).toBe(true);
+  await page.getByLabel('タグの型').selectOption('text');
+  await page.getByLabel('値 1', { exact: true }).fill('free');
+  await page.getByRole('button', { name: 'タグを追加' }).click();
+  await expect(page.getByLabel('other: free')).toBeVisible();
+  await expect(page.getByLabel('other: free').locator('.badge')).toHaveClass(/badge-accent/);
+  const actions = page.getByRole('button', { name: 'other を編集' }).locator('..');
+  if (test.info().project.name === 'desktop') {
+    await page.getByRole('heading', { name: 'タグ', exact: true }).hover();
+    await expect(actions).toHaveCSS('opacity', '0');
+    await page.getByLabel('other: free').focus();
+  }
+  await expect(actions).toHaveCSS('opacity', '1');
+  await expect(page.getByRole('button', { name: 'other を削除' })).toBeVisible();
+  await page.getByRole('button', { name: 'other を編集' }).click();
+  await expect(key).toHaveValue('other');
+  await expect(page.getByLabel('値 1', { exact: true })).toHaveValue('free');
+  await page.getByRole('button', { name: 'タグを追加' }).click();
+  if (test.info().project.name === 'desktop') await page.getByLabel('other: free').hover();
+  await page.getByRole('button', { name: 'other を削除' }).click();
+  await expect(page.getByLabel('other: free')).toHaveCount(0);
 });
 
 test('fetches a URL into the local preview and keeps API requests pending', async ({ page }) => {
@@ -312,7 +452,7 @@ test('listing link opens registration and a rejected request keeps the local dra
   await page.goto('/#/contents');
   await page.getByRole('link', { name: 'コンテンツを登録' }).click();
   await page.getByLabel('アップロードするファイル').setInputFiles(sample);
-  await page.getByLabel('タグ名').fill('category');
+  await enterAdditionalTagKey(page, 'category');
   await page.getByRole('button', { name: 'タグを追加' }).click();
   await page.getByRole('button', { name: '登録する' }).click();
   await expect(page.getByRole('alert')).toHaveText('The tag key is not allowed.');

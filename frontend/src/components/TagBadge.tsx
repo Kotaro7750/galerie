@@ -1,6 +1,7 @@
 import { Tag as TagIcon, Tags, Hash } from 'lucide-react';
-import type { ContentDiagnostic, Tag } from '../api/generated';
+import type { ContentDiagnostic, Tag, TagSchema } from '../api/generated';
 import { diagnosticReasons } from '../tagPresentation';
+import { tagCategory, tagCategoryStyle } from '../tagCategory';
 
 function tagValue(tag: Tag): string {
   switch (tag.type) {
@@ -31,14 +32,15 @@ export function DiagnosticBadge({ diagnostic, absent }: { diagnostic: ContentDia
   );
 }
 
-export function TagBadge({ tag, onClick }: { tag: Tag; onClick?: () => void }) {
+export function TagBadge({ tag, schema, onClick }: { tag: Tag; schema?: TagSchema; onClick?: () => void }) {
   const keyOnly = tag.type === 'keyOnly';
   const ValueIcon = tag.type === 'textSet' || tag.type === 'integerSet' || tag.type === 'realSet' ? Tags : TagIcon;
+  const style = tagCategoryStyle[tagCategory(schema, tag.key)];
 
   const Wrapper = onClick ? 'button' : 'span';
   return (
-    <Wrapper type={onClick ? 'button' : undefined} className={`group/tag inline-block max-w-full text-left ${onClick ? 'pointer-events-auto cursor-pointer' : ''}`} tabIndex={0} aria-label={tagLabel(tag)} onClick={onClick}>
-      <span className={`badge badge-soft badge-primary h-auto min-h-7 max-w-full py-1 ${onClick ? 'transition-colors group-hover/tag:bg-primary group-hover/tag:text-primary-content group-focus-visible/tag:bg-primary group-focus-visible/tag:text-primary-content' : ''}`}>
+    <Wrapper type={onClick ? 'button' : undefined} className={`group/tag inline-block max-w-full text-left ${onClick ? 'pointer-events-auto cursor-pointer' : ''}`} tabIndex={0} aria-label={tagLabel(tag)} aria-description={style.label} onClick={onClick}>
+      <span className={`badge badge-soft ${style.badge} h-auto min-h-7 max-w-full py-1 ${onClick ? `transition-colors ${style.hover}` : ''}`}>
         {keyOnly ? <Hash aria-hidden="true" className="size-4 shrink-0" strokeWidth={1.75} /> : (
           <span className="grid size-4 shrink-0" aria-hidden="true">
             <ValueIcon className="col-start-1 row-start-1 size-4 group-hover/tag:invisible group-focus/tag:invisible" strokeWidth={1.75} />

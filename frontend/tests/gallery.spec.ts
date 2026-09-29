@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { mockContentAccess } from './content_access';
+import { mockTagSchema } from './tag_schema';
 
 test.beforeEach(async ({ page }) => { await mockContentAccess(page); });
 
@@ -19,6 +20,32 @@ async function mockImages(page: Page) {
     path: '../sample/00065786-f916-4e2c-85bc-3db5e4c0cb71.avif', contentType: 'image/avif',
   }));
 }
+
+test('colors tag badges by schema category in the gallery, search, and detail', async ({ page, isMobile }) => {
+  await mockTagSchema(page, { version: '0', allowAdditionalTags: true, required: [{ key: 'subjects', type: 'textSet' }], optional: [{ key: 'category', type: 'text' }] });
+  const taggedContent = { ...content(0), tags: [
+    { key: 'subjects', type: 'textSet', values: ['sky'] },
+    { key: 'category', type: 'text', value: 'landscape' },
+    { key: 'extra', type: 'text', value: 'other' },
+  ] };
+  await mockImages(page);
+  await page.route('**/api/v0/contents?*', (route) => route.fulfill({ json: { items: [taggedContent] } }));
+  await page.route(`**/api/v0/contents/${id}`, (route) => route.fulfill({ json: taggedContent }));
+  await page.goto('/#/contents');
+  const card = page.getByRole('link', { name: '画像 1 を開く' });
+  if (!isMobile) await card.locator('../..').hover({ position: { x: 4, y: 4 } });
+  const panel = page.getByRole('region', { name: '画像 1 のタグ' });
+  await expect(panel.getByLabel('subjects: sky').locator('.badge')).toHaveClass(/badge-primary/);
+  await expect(panel.getByLabel('category: landscape').locator('.badge')).toHaveClass(/badge-secondary/);
+  await expect(panel.getByLabel('extra: other').locator('.badge')).toHaveClass(/badge-accent/);
+  await panel.getByLabel('category: landscape').click();
+  await expect(page.getByRole('list', { name: '検索条件（すべてに一致）' }).getByLabel('category').locator('.badge')).toHaveClass(/badge-secondary/);
+  await card.click({ position: { x: 4, y: 4 } });
+  const detail = page.getByRole('region', { name: 'タグ情報' });
+  await expect(detail.getByLabel('subjects: sky').locator('.badge')).toHaveClass(/badge-primary/);
+  await expect(detail.getByLabel('category: landscape').locator('.badge')).toHaveClass(/badge-secondary/);
+  await expect(detail.getByLabel('extra: other').locator('.badge')).toHaveClass(/badge-accent/);
+});
 
 test('home introduces the gallery without fetching content', async ({ page }) => {
   const requestedPaths: string[] = [];

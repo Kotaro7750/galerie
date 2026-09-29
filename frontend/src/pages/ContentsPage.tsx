@@ -5,9 +5,11 @@ import { GalleryToolbar } from '../components/GalleryToolbar';
 import { ErrorMessage, Loading } from '../components/Feedback';
 import { IconLink } from '../components/IconAction';
 import { Plus } from 'lucide-react';
+import { useTagSchema } from '../hooks/useTagSchema';
 
 export function ContentsPage() {
   const { query, density, setDensity, sentinel, items, refresh, retry } = useContents();
+  const schema = useTagSchema().data;
   const navigationItems = items.map(({ id, contentUrl }) => ({ id, contentUrl }));
   return <section className="space-y-4">
     <ContentSearch />
@@ -18,7 +20,7 @@ export function ContentsPage() {
     {query.isSuccess && items.length === 0 && <div className="space-y-4 py-12 text-center"><h2>コンテンツが見つかりません</h2><p>検索条件を変更するか、画像を追加してください。</p></div>}
     {items.length > 0 &&
       <div className={`grid gap-4 ${density === 'compact' ? 'grid-cols-3 md:grid-cols-5' : 'grid-cols-2 md:grid-cols-3'}`}>
-        {items.map((item, index) => <ContentCard key={item.id} item={item} index={index} navigationItems={navigationItems} />)}
+        {items.map((item, index) => <ContentCard key={item.id} item={item} index={index} navigationItems={navigationItems} schema={schema} />)}
       </div>
     }
     <div ref={sentinel} className="h-px" />

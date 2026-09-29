@@ -1,5 +1,5 @@
 version: '0'
-allow_additional_tags: false
+allow_additional_tags: true
 required:
   subjects:
     type: text_set
@@ -13,3 +13,11 @@ optional:
     type: key_only
   transparent:
     type: key_only
+  number:
+    type: integer
+    min: 0
+    max: 100
+  real:
+    type: real
+    min: 0
+    max: 100

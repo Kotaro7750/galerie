@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import type { Content } from '../api/generated';
+import type { Content, TagSchema } from '../api/generated';
 import { ContentImage } from './ContentImage';
 import { ContentTags } from './ContentTags';
 import { useSearchStore } from '../store';
@@ -8,7 +8,7 @@ import { diagnosticReasons } from '../tagPresentation';
 import { useState } from 'react';
 import type { ContentNavigationItem } from '../contentNavigation';
 
-export function ContentCard({ item, index, navigationItems }: { item: Content; index: number; navigationItems: ContentNavigationItem[] }) {
+export function ContentCard({ item, index, navigationItems, schema }: { item: Content; index: number; navigationItems: ContentNavigationItem[]; schema?: TagSchema }) {
   const { draft, applyTerms } = useSearchStore();
   const [diagnosticHovered, setDiagnosticHovered] = useState(false);
   const [diagnosticFocused, setDiagnosticFocused] = useState(false);
@@ -19,7 +19,7 @@ export function ContentCard({ item, index, navigationItems }: { item: Content; i
       <Link className="absolute inset-0" to={`/contents/${item.id}`} state={{ navigationItems }} aria-label={`画像 ${index + 1} を開く`} />
       {(item.tags.length > 0 || item.diagnostics.length > 0) && <div className="card-body absolute inset-x-0 top-0 z-10 flex h-2/3 min-h-0 flex-col justify-start gap-1 overflow-visible p-2 pointer-events-none [@media(hover:hover)]:invisible group-hover:visible group-focus-within:visible" role="region" aria-label={`画像 ${index + 1} のタグ`}>
         <div className="min-h-0 overflow-y-auto overscroll-contain pointer-events-auto" aria-label="タグをスクロール">
-          <ContentTags tags={item.tags} diagnostics={item.diagnostics} showDiagnostics={false} leadingItem={item.diagnostics.length > 0 &&
+          <ContentTags tags={item.tags} diagnostics={item.diagnostics} schema={schema} showDiagnostics={false} leadingItem={item.diagnostics.length > 0 &&
             <span className="badge badge-error pointer-events-auto size-7 p-0" aria-label={`診断情報 ${item.diagnostics.length} 件: ${diagnosticSummary.join('、')}`} tabIndex={0}
               onMouseEnter={() => setDiagnosticHovered(true)} onMouseLeave={() => setDiagnosticHovered(false)}
               onFocus={() => setDiagnosticFocused(true)} onBlur={() => setDiagnosticFocused(false)}>

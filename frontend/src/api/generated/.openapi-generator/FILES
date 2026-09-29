@@ -1,5 +1,6 @@
 apis/ContentAccessApi.ts
 apis/ContentsApi.ts
+apis/TagSchemaApi.ts
 apis/index.ts
 index.ts
 models/BadRequestProblem.ts
@@ -48,6 +49,8 @@ models/TagExistsKind.ts
 models/TagExistsTerm.ts
 models/TagMatchKind.ts
 models/TagMatchTerm.ts
+models/TagSchema.ts
+models/TagSchemaVersion.ts
 models/TextSetTag.ts
 models/TextSetTagDefinition.ts
 models/TextSetTagType.ts

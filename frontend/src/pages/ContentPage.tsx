@@ -14,6 +14,7 @@ import { ContentTags } from '../components/ContentTags';
 import { SlideshowControls } from '../components/SlideshowControls';
 import { ErrorMessage, Loading } from '../components/Feedback';
 import { useSearchStore } from '../store';
+import { useTagSchema } from '../hooks/useTagSchema';
 import type { ContentNavigationItem } from '../contentNavigation';
 
 export function ContentPage() {
@@ -86,6 +87,7 @@ export function ContentPage() {
   const fullscreenLabel = fullscreen ? '全画面表示を解除' : '全画面表示';
   const FullscreenIcon = fullscreen ? Minimize : Fullscreen;
   const query = useContent(contentId);
+  const schema = useTagSchema().data;
   const [imageResolutions, setImageResolutions] = useState<Record<string, ImageResolutionValue>>({});
   const updateResolution = (src: string, value?: ImageResolutionValue) => setImageResolutions((current) => {
     if (value) return { ...current, [src]: value };
@@ -109,7 +111,7 @@ export function ContentPage() {
     {query.isPending && <Loading />}
     {query.isError && <ErrorMessage error={query.error} onRetry={() => { void query.refetch(); }} />}
     {query.data && <>
-      <section aria-label="タグ情報"><ContentTags tags={query.data.tags} diagnostics={query.data.diagnostics} onTagClick={(tag) => {
+      <section aria-label="タグ情報"><ContentTags tags={query.data.tags} diagnostics={query.data.diagnostics} schema={schema} onTagClick={(tag) => {
         applyTerms([...draft, { kind: 'tagExists', key: tag.key }]);
         navigate('/contents');
       }} /></section>

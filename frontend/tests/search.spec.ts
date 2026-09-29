@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { mockContentAccess } from './content_access';
+import { enterAdditionalTagKey, mockTagSchema } from './tag_schema';
 
-test.beforeEach(async ({ page }) => { await mockContentAccess(page); });
+test.beforeEach(async ({ page }) => { await mockContentAccess(page); await mockTagSchema(page); });
 
 test('draft terms only run on search, with JSON conditions and matching cursors', async ({ page }) => {
   const requests: URL[] = [];
@@ -18,8 +19,8 @@ test('draft terms only run on search, with JSON conditions and matching cursors'
   await expect(page.getByRole('button', { name: '検索', exact: true })).toHaveClass(/btn-circle.*btn-outline.*btn-primary/);
   await expect(page.getByRole('button', { name: '条件をクリア', exact: true })).toHaveClass(/btn-circle.*btn-outline.*btn-secondary/);
   await expect(page.getByLabel('タグ名', { exact: true }).locator('..').locator('svg')).toHaveClass(/lucide-hash/);
-  await expect(page.getByLabel('タグ名', { exact: true }).locator('..').getByText('タグ名')).toHaveCount(0);
-  await page.getByLabel('タグ名', { exact: true }).fill('category');
+  await expect(page.getByLabel('タグ名', { exact: true }).locator('..')).toHaveClass(/input/);
+  await enterAdditionalTagKey(page, 'category');
   await page.getByRole('button', { name: '値を追加', exact: true }).click();
   await expect(page.getByLabel('値 1', { exact: true }).locator('..').locator('svg')).toHaveClass(/lucide-tag/);
   await page.getByLabel('値 1', { exact: true }).fill('日本語,+&');
@@ -40,7 +41,7 @@ test('draft terms only run on search, with JSON conditions and matching cursors'
   await expect(page.getByLabel('値 1', { exact: true })).toHaveValue('日本語,+&');
   await page.getByRole('button', { name: '条件に追加', exact: true }).click();
   await expect(page.getByLabel('category: 日本語,+&')).toBeVisible();
-  await page.getByLabel('タグ名', { exact: true }).fill('authors');
+  await enterAdditionalTagKey(page, 'authors');
   await page.getByRole('button', { name: '条件に追加', exact: true }).click();
   await expect(page.getByLabel('authors', { exact: true })).toBeVisible();
   const editAuthors = page.getByRole('button', { name: '条件 2 を編集', exact: true });
@@ -107,16 +108,48 @@ test('draft terms only run on search, with JSON conditions and matching cursors'
 
 test('term validation and normalization', async ({ page }) => {
   await page.goto('/');
-  await page.getByLabel('タグ名', { exact: true }).fill('1bad');
+  await enterAdditionalTagKey(page, '1bad');
   await page.getByRole('button', { name: '条件に追加', exact: true }).click();
   await expect(page.getByRole('alert')).toBeVisible();
-  await page.getByLabel('タグ名', { exact: true }).fill('ｃategory');
+  await enterAdditionalTagKey(page, 'ｃategory');
   await page.getByRole('button', { name: '値を追加', exact: true }).click();
   await page.getByLabel('値 1', { exact: true }).fill('e\u0301');
   await page.getByRole('button', { name: '条件に追加', exact: true }).click();
   await expect(page.getByLabel('category: é', { exact: true })).toBeVisible();
-  await page.getByLabel('タグ名', { exact: true }).fill('empty');
+  await enterAdditionalTagKey(page, 'empty');
   await page.getByRole('button', { name: '値を追加', exact: true }).click();
   await page.getByRole('button', { name: '条件に追加', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText('空の値は追加できません。');
+});
+
+test('schema restricts tag keys and uses numeric input for a defined key', async ({ page }) => {
+  await mockTagSchema(page, {
+    version: '0', allowAdditionalTags: false,
+    required: [{ key: 'rating', type: 'integer', min: 1, max: 5 }],
+    optional: [{ key: 'animation', type: 'keyOnly' }],
+  });
+  await page.goto('/');
+  const key = page.getByLabel('タグ名', { exact: true });
+  await expect(key).toHaveJSProperty('tagName', 'INPUT');
+  await key.fill('unknown');
+  await expect(page.getByRole('listbox', { name: 'タグ名の候補' })).toContainText('該当するタグ名がありません');
+  await page.getByRole('button', { name: '条件に追加', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('スキーマで許可されたタグ名を選んでください。');
+  await key.fill('rat');
+  await expect(page.getByRole('group', { name: 'Required' }).getByRole('option', { name: 'rating' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Optional' })).toHaveCount(0);
+  await key.press('ArrowDown');
+  await key.press('Enter');
+  await expect(key).toHaveValue('rating');
+  await page.getByRole('button', { name: '値を追加', exact: true }).click();
+  await expect(page.getByLabel('値 1', { exact: true })).toHaveAttribute('type', 'number');
+  await expect(page.getByLabel('値 1', { exact: true })).toHaveAttribute('step', '1');
+  await page.getByLabel('値 1', { exact: true }).fill('3');
+  await page.getByRole('button', { name: '条件に追加', exact: true }).click();
+  await expect(page.getByLabel('rating: 3')).toBeVisible();
+  await key.fill('ani');
+  await page.getByRole('group', { name: 'Optional' }).getByRole('option', { name: 'animation' }).click();
+  await expect(page.getByRole('button', { name: '値を追加', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '条件に追加', exact: true }).click();
+  await expect(page.getByLabel('animation', { exact: true })).toBeVisible();
 });

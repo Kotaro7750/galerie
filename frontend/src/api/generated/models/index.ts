@@ -46,6 +46,8 @@ export * from './TagExistsKind';
 export * from './TagExistsTerm';
 export * from './TagMatchKind';
 export * from './TagMatchTerm';
+export * from './TagSchema';
+export * from './TagSchemaVersion';
 export * from './TextSetTag';
 export * from './TextSetTagDefinition';
 export * from './TextSetTagType';

@@ -14,6 +14,8 @@ import { TermEditor } from '../components/TermEditor';
 import { MediaTypeIcon } from '../components/MediaTypeIcon';
 import { ImageResolution, type ImageResolutionValue } from '../components/ImageResolution';
 import { convertToAvif } from '../image/convert';
+import { useTagSchema } from '../hooks/useTagSchema';
+import { registrationErrors } from '../tagSchema';
 
 const maxFileSize = 100 * 1024 * 1024;
 type Draft = { id: number; file: File };
@@ -75,6 +77,7 @@ function prepareContent(file: Blob, name: string, mediaType: MediaType, signal: 
 }
 
 export function CreateContentPage() {
+  const schemaQuery = useTagSchema();
   const [mediaType, setMediaType] = useState<MediaType>(MediaType.ImageAvif);
   const [sourceMode, setSourceMode] = useState<'file' | 'url'>('file');
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -94,6 +97,7 @@ export function CreateContentPage() {
   const selection = useRef(0);
   const navigate = useNavigate();
   const client = useQueryClient();
+  const tagErrors = schemaQuery.data ? registrationErrors(schemaQuery.data, tags) : [];
   useEffect(() => () => request.current?.abort(), []);
 
   function cancelPreparation() {
@@ -189,7 +193,7 @@ export function CreateContentPage() {
     return () => document.removeEventListener('paste', pasteImage);
   });
   async function register() {
-    if (busy || !drafts.length) return;
+    if (busy || !drafts.length || !schemaQuery.data || tagErrors.length || tagToEdit) return;
     const pending = [...drafts];
     const submittedTags = [...tags];
     setBusy(true);
@@ -251,11 +255,19 @@ export function CreateContentPage() {
     </div></section>
     <section className="card bg-base-200" aria-label="登録するタグ"><div className="card-body gap-4">
       <h2 className="card-title"><Tags className="size-5" aria-hidden="true" />タグ</h2>
-      <TermEditor onAddTag={(tag) => { setTags([...tags, tag]); setTagToEdit(undefined); }} tagToEdit={tagToEdit} existingKeys={tags.map((tag) => tag.key)} />
-      {tags.length > 0 && <ul className="flex flex-wrap gap-3" aria-label="登録するタグ一覧">{tags.map((tag, index) => <li key={`${tag.key}-${index}`} className="flex items-center gap-1"><TagBadge tag={tag} /><IconButton className="btn-ghost btn-xs" icon={Pencil} label={`${tag.key} を編集`} disabled={busy} onClick={() => { setTags(tags.filter((item) => item !== tag)); setTagToEdit(tag); }} /><IconButton className="btn-ghost btn-xs" icon={Trash2} label={`${tag.key} を削除`} disabled={busy} onClick={() => setTags(tags.filter((item) => item !== tag))} /></li>)}</ul>}
+      {schemaQuery.data ? <TermEditor schema={schemaQuery.data} onAddTag={(tag) => { setTags([...tags, tag]); setTagToEdit(undefined); }} tagToEdit={tagToEdit} existingKeys={tags.map((tag) => tag.key)} />
+        : <p role="status">{schemaQuery.isError ? 'タグスキーマを取得できませんでした。再読み込みしてお試しください。' : 'タグスキーマを読み込み中…'}</p>}
+      {tagErrors.length > 0 && <ul className="text-sm text-error" aria-label="タグスキーマの確認結果">{tagErrors.map((error) => <li key={error}>{error}</li>)}</ul>}
+      {tags.length > 0 && <ul className="flex flex-wrap gap-3" aria-label="登録するタグ一覧">{tags.map((tag, index) => <li key={`${tag.key}-${index}`} className="group/tag-item relative inline-flex max-w-full items-center [@media(hover:none)]:flex-wrap">
+        <TagBadge tag={tag} schema={schemaQuery.data} />
+        <span className="pointer-events-none absolute start-full top-1/2 z-10 flex -translate-y-1/2 opacity-0 group-hover/tag-item:pointer-events-auto group-hover/tag-item:opacity-100 group-focus-within/tag-item:pointer-events-auto group-focus-within/tag-item:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:static [@media(hover:none)]:translate-y-0 [@media(hover:none)]:opacity-100">
+          <IconButton className="btn-xs rounded-full [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11" icon={Pencil} label={`${tag.key} を編集`} disabled={busy} onClick={() => { setTags(tags.filter((item) => item !== tag)); setTagToEdit(tag); }} />
+          <IconButton className="btn-xs rounded-full [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11" icon={Trash2} label={`${tag.key} を削除`} disabled={busy} onClick={() => setTags(tags.filter((item) => item !== tag))} />
+        </span>
+      </li>)}</ul>}
     </div></section>
     {Object.keys(failures).length > 0 && <div role="alert" className="alert alert-error my-4 break-words"><ul>{drafts.filter((draft) => failures[draft.id]).map((draft) => <li key={draft.id}>{Object.keys(failures).length > 1 ? `${draft.file.name}: ` : ''}{failures[draft.id]}</li>)}</ul></div>}
     {progress && busy && <div role="status" className="flex items-center gap-3"><progress className="progress progress-primary flex-1" value={progress.done} max={progress.total} /><span>{progress.done} / {progress.total}</span></div>}
-    <button className="btn btn-primary w-full" disabled={!drafts.length || busy || preparing || Boolean(tagToEdit)} onClick={() => void register()}><Save className="size-5" aria-hidden="true" />{busy ? '登録中…' : '登録する'}</button>
+    <button className="btn btn-primary w-full" disabled={!drafts.length || busy || preparing || Boolean(tagToEdit) || !schemaQuery.data || tagErrors.length > 0} onClick={() => void register()}><Save className="size-5" aria-hidden="true" />{busy ? '登録中…' : '登録する'}</button>
   </section>;
 }
