@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Galerie API
-  version: 0.6.1
+  version: 0.6.2
   license:
     name: MIT License
     identifier: MIT
@@ -20,10 +20,53 @@ tags:
     description: コンテンツファイルに関するAPI
   - name: ContentAccess
     description: コンテンツ配信エンドポイントへのアクセス設定に関するAPI
+  - name: TagSchema
+    description: タグスキーマに関するAPI
 
 security: []
 
 paths:
+  /tag-schema:
+    get:
+      operationId: getTagSchema
+      tags:
+        - TagSchema
+      summary: タグスキーマの取得
+      description: |
+        コンテンツの登録・検索・診断に使用される、現在有効なタグスキーマを返す。
+        スキーマが設定されていない場合は、既定のスキーマを返す。
+      responses:
+        "200":
+          description: タグスキーマ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagSchema"
+              examples:
+                configured:
+                  summary: タグ定義があるスキーマ
+                  value:
+                    version: "0"
+                    allowAdditionalTags: false
+                    required:
+                      - key: subjects
+                        type: textSet
+                    optional:
+                      - key: category
+                        type: text
+                        allowedValues: [landscape, abstract]
+                      - key: animation
+                        type: keyOnly
+                default:
+                  summary: スキーマが設定されていない場合
+                  value:
+                    version: "0"
+                    allowAdditionalTags: true
+                    required: []
+                    optional: []
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /content-access:
     post:
       operationId: configureContentAccess
@@ -366,6 +409,33 @@ components:
       example: 30
 
   schemas:
+    TagSchemaVersion:
+      type: string
+      const: "0"
+      description: タグスキーマの形式バージョン
+
+    TagSchema:
+      type: object
+      description: コンテンツの登録・検索・診断に適用するタグスキーマ
+      additionalProperties: false
+      required: [version, allowAdditionalTags, required, optional]
+      properties:
+        version:
+          $ref: "#/components/schemas/TagSchemaVersion"
+        allowAdditionalTags:
+          type: boolean
+          description: 定義されていないキーのタグを許可するか
+        required:
+          type: array
+          description: 必須タグの定義。定義がない場合は空配列
+          items:
+            $ref: "#/components/schemas/TagDefinition"
+        optional:
+          type: array
+          description: 任意タグの定義。定義がない場合は空配列
+          items:
+            $ref: "#/components/schemas/TagDefinition"
+
     ContentMetadataInput:
       type: object
       description: コンテンツに設定するメタデータ
