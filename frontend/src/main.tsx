@@ -6,7 +6,10 @@ import { App } from './App';
 import { queryClient } from './api/client';
 import { AuthBoundary } from './auth/AuthBoundary';
 import { ContentAccessBoundary } from './content-access/ContentAccessBoundary';
+import { applyTheme, readTheme } from './theme';
 import './style.css';
+
+applyTheme(readTheme());
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

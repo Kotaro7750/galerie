@@ -579,21 +579,31 @@ test('outlines only diagnostics for tags absent from XMP on the content page', a
   await expect(detail.getByLabel('author: 必須タグがありません', { exact: true }).locator('.badge')).toHaveClass(/badge-dash/);
 });
 
-test('theme toggle overrides either system preference and survives navigation', async ({ page }) => {
+test('theme toggle persists across reloads and overrides later system changes', async ({ page }) => {
   await page.route('**/api/v0/contents?*', (route) => route.fulfill({ json: { items: [] } }));
   for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme });
     await page.goto('/');
+    await page.evaluate(() => localStorage.removeItem('galerie-theme'));
     await page.reload();
     const toggle = page.getByRole('checkbox', { name: 'ダークモード' });
     await expect(toggle).toBeChecked({ checked: colorScheme === 'dark' });
     const scheme = () => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme);
     await expect.poll(scheme).toBe(colorScheme);
-    await toggle.setChecked(colorScheme !== 'dark');
-    await expect.poll(scheme).toBe(colorScheme === 'dark' ? 'light' : 'dark');
+    const chosenTheme = colorScheme === 'dark' ? 'light' : 'dark';
+    await toggle.setChecked(chosenTheme === 'dark');
+    await expect.poll(scheme).toBe(chosenTheme);
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('galerie-theme'))).toBe(chosenTheme);
+    await page.reload();
+    await expect(toggle).toBeChecked({ checked: chosenTheme === 'dark' });
+    await expect.poll(scheme).toBe(chosenTheme);
+    await page.emulateMedia({ colorScheme: chosenTheme === 'dark' ? 'light' : 'dark' });
+    await page.reload();
+    await expect(toggle).toBeChecked({ checked: chosenTheme === 'dark' });
+    await expect.poll(scheme).toBe(chosenTheme);
     await page.getByRole('link', { name: 'ギャラリーを開く' }).click();
-    await expect(toggle).toBeChecked({ checked: colorScheme !== 'dark' });
-    await expect.poll(scheme).toBe(colorScheme === 'dark' ? 'light' : 'dark');
+    await expect(toggle).toBeChecked({ checked: chosenTheme === 'dark' });
+    await expect.poll(scheme).toBe(chosenTheme);
   }
 });
 
