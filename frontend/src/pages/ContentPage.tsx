@@ -16,6 +16,7 @@ import { ErrorMessage, Loading } from '../components/Feedback';
 import { useSearchStore } from '../store';
 import { useTagSchema } from '../hooks/useTagSchema';
 import type { ContentNavigationItem } from '../contentNavigation';
+import { tagSearchTerm } from '../tagSearchTerm';
 
 export function ContentPage() {
   const { contentId = '' } = useParams();
@@ -112,7 +113,7 @@ export function ContentPage() {
     {query.isError && <ErrorMessage error={query.error} onRetry={() => { void query.refetch(); }} />}
     {query.data && <>
       <section aria-label="タグ情報"><ContentTags tags={query.data.tags} diagnostics={query.data.diagnostics} schema={schema} onTagClick={(tag) => {
-        applyTerms([...draft, { kind: 'tagExists', key: tag.key }]);
+        applyTerms([...draft, tagSearchTerm(tag)]);
         navigate('/contents');
       }} /></section>
     </>}

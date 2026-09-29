@@ -39,7 +39,7 @@ test('colors tag badges by schema category in the gallery, search, and detail', 
   await expect(panel.getByLabel('category: landscape').locator('.badge')).toHaveClass(/badge-secondary/);
   await expect(panel.getByLabel('extra: other').locator('.badge')).toHaveClass(/badge-accent/);
   await panel.getByLabel('category: landscape').click();
-  await expect(page.getByRole('list', { name: '検索条件（すべてに一致）' }).getByLabel('category').locator('.badge')).toHaveClass(/badge-secondary/);
+  await expect(page.getByRole('list', { name: '検索条件（すべてに一致）' }).getByLabel('category: landscape').locator('.badge')).toHaveClass(/badge-secondary/);
   await card.click({ position: { x: 4, y: 4 } });
   const detail = page.getByRole('region', { name: 'タグ情報' });
   await expect(detail.getByLabel('subjects: sky').locator('.badge')).toHaveClass(/badge-primary/);
@@ -460,8 +460,8 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
   await expect(category.getByText('landscape', { exact: true })).toBeVisible();
   await category.click();
   await expect(page).toHaveURL(/#\/contents$/);
-  await expect(page.getByRole('list', { name: '検索条件（すべてに一致）' }).getByLabel('category', { exact: true })).toBeVisible();
-  await expect.poll(() => requestedConditions.at(-1)).toEqual([{ kind: 'tagExists', key: 'category' }]);
+  await expect(page.getByRole('list', { name: '検索条件（すべてに一致）' }).getByLabel('category: landscape', { exact: true })).toBeVisible();
+  await expect.poll(() => requestedConditions.at(-1)).toEqual([{ kind: 'tagMatch', key: 'category', values: ['landscape'] }]);
   await page.getByRole('button', { name: '条件をクリア', exact: true }).click();
   if (!isMobile) {
     await cardContainer.hover({ position: { x: 4, y: 4 } });
@@ -519,11 +519,24 @@ test('shows API tags on hover or focus and on the content page', async ({ page, 
   }
   await diagnosticBadge.focus();
   await expect.poll(() => diagnosticBadge.evaluate((element) => getComputedStyle(element, '::before').opacity)).toBe('1');
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: `test-results/tags-detail-${test.info().project.name}.png`, fullPage: true });
   await detailAuthors.click();
   await expect(page).toHaveURL(/#\/contents$/);
-  await expect.poll(() => requestedConditions.at(-1)).toEqual([{ kind: 'tagExists', key: 'authors' }]);
+  await expect.poll(() => requestedConditions.at(-1)).toEqual([{ kind: 'tagMatch', key: 'authors', values: ['Alice', 'Bob'] }]);
+  await page.getByRole('button', { name: '条件をクリア', exact: true }).click();
+  await card.focus();
+  await panel.getByLabel('rating: 0', { exact: true }).click();
+  await expect.poll(() => requestedConditions.at(-1)).toEqual([{ kind: 'tagMatch', key: 'rating', values: ['0'] }]);
+  await page.getByRole('button', { name: '条件をクリア', exact: true }).click();
+  await card.focus();
+  await panel.getByLabel('emptySet: ', { exact: true }).click();
+  await expect.poll(() => requestedConditions.at(-1)).toEqual([{ kind: 'tagExists', key: 'emptySet' }]);
+  await page.getByRole('button', { name: '条件をクリア', exact: true }).click();
+  await card.focus();
+  await panel.getByLabel('animation', { exact: true }).click();
+  await expect.poll(() => requestedConditions.at(-1)).toEqual([{ kind: 'tagExists', key: 'animation' }]);
+  await card.click({ position: { x: 4, y: 4 } });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: `test-results/tags-detail-${test.info().project.name}.png`, fullPage: true });
 });
 
 test('omits empty tag overlays and shows the empty state on the content page', async ({ page }) => {

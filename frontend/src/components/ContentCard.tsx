@@ -7,6 +7,7 @@ import { TriangleAlert } from 'lucide-react';
 import { diagnosticReasons } from '../tagPresentation';
 import { useState } from 'react';
 import type { ContentNavigationItem } from '../contentNavigation';
+import { tagSearchTerm } from '../tagSearchTerm';
 
 export function ContentCard({ item, index, navigationItems, schema }: { item: Content; index: number; navigationItems: ContentNavigationItem[]; schema?: TagSchema }) {
   const { draft, applyTerms } = useSearchStore();
@@ -24,7 +25,7 @@ export function ContentCard({ item, index, navigationItems, schema }: { item: Co
               onMouseEnter={() => setDiagnosticHovered(true)} onMouseLeave={() => setDiagnosticHovered(false)}
               onFocus={() => setDiagnosticFocused(true)} onBlur={() => setDiagnosticFocused(false)}>
               <TriangleAlert aria-hidden="true" className="size-4" strokeWidth={1.75} />
-            </span>} onTagClick={(tag) => applyTerms([...draft, { kind: 'tagExists', key: tag.key }])} />
+            </span>} onTagClick={(tag) => applyTerms([...draft, tagSearchTerm(tag)])} />
         </div>
         {item.diagnostics.length > 0 && <div role="tooltip" className={`pointer-events-none absolute inset-x-2 top-11 z-20 max-h-[calc(150%-3.25rem)] overflow-hidden rounded-box bg-base-100 p-2 text-xs text-base-content shadow-lg ${diagnosticHovered || diagnosticFocused ? 'block' : 'hidden'}`}>
           <ul className="space-y-1" aria-label="診断の一覧">{diagnosticSummary.map((summary, diagnosticIndex) => <li key={diagnosticIndex}>{summary}</li>)}</ul>
