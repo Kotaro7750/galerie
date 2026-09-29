@@ -7,6 +7,7 @@ use ::config::Config;
 use axum::{Router, middleware};
 use controller::content::ContentController;
 use controller::content_access::ContentAccessController;
+use controller::tag_schema::TagSchemaController;
 use http::{
     HeaderValue, Method,
     header::{AUTHORIZATION, CONTENT_TYPE},
@@ -68,7 +69,7 @@ async fn main() -> anyhow::Result<()> {
         .construct_content_access_configurator()?;
 
     let contents_controller = ContentController::new(
-        tag_schema,
+        tag_schema.clone(),
         ListContentsUseCase::new(metadata_index.clone()),
         GetContentUseCase::new(metadata_index.clone()),
         CreateContentUseCase::new(content_storage, metadata_index.clone()),
@@ -80,7 +81,8 @@ async fn main() -> anyhow::Result<()> {
 
     let api_v0_router = Router::new()
         .nest("/contents", contents_controller.router())
-        .nest("/content-access", content_access_controller.router());
+        .nest("/content-access", content_access_controller.router())
+        .nest("/tag-schema", TagSchemaController::new(tag_schema).router());
     let api_v0_router = match config.authorization().construct_auth_layer().await? {
         Some(auth_layer) => api_v0_router.layer(auth_layer),
         None => api_v0_router,

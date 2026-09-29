@@ -4,6 +4,7 @@ README.md
 src/apis/content_access.rs
 src/apis/contents.rs
 src/apis/mod.rs
+src/apis/tag_schema.rs
 src/header.rs
 src/lib.rs
 src/models.rs

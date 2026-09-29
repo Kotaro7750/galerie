@@ -6,6 +6,32 @@ use galerie_api::models::{
 
 use crate::domain;
 
+impl From<&domain::tag_schema::TagSchema> for api::TagSchema {
+    fn from(schema: &domain::tag_schema::TagSchema) -> Self {
+        match schema {
+            domain::tag_schema::TagSchema::V0(schema) => Self::new(
+                api::TagSchemaVersion::Variant0,
+                schema.allow_additional_tags(),
+                schema_definitions(schema.required()),
+                schema_definitions(schema.optional()),
+            ),
+        }
+    }
+}
+
+fn schema_definitions(
+    definitions: Option<
+        &std::collections::HashMap<domain::tag::TagKey, domain::tag_schema::TagDefinition>,
+    >,
+) -> Vec<api::TagDefinition> {
+    let mut definitions: Vec<_> = definitions.into_iter().flat_map(|map| map.iter()).collect();
+    definitions.sort_by_key(|(key, _)| key.as_ref().to_string());
+    definitions
+        .into_iter()
+        .map(|(key, definition)| tag_definition(key, definition.clone()))
+        .collect()
+}
+
 impl From<domain::Content> for Content {
     fn from(content: domain::Content) -> Self {
         Content {

@@ -112,6 +112,7 @@ pub fn check_xss_map<T>(v: &std::collections::HashMap<String, T>) -> std::result
 
 
 
+
 /// 不正なリクエストを表すProblem Details
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
@@ -5297,6 +5298,196 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<TagMatchTerm
     }
 }
 
+
+
+/// コンテンツの登録・検索・診断に適用する現在有効なタグスキーマ
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct TagSchema {
+    #[serde(rename = "version")]
+          #[validate(nested)]
+    pub version: models::TagSchemaVersion,
+
+    /// 定義されていないキーのタグを許可するか
+    #[serde(rename = "allowAdditionalTags")]
+    pub allow_additional_tags: bool,
+
+    /// 必須タグの定義。定義がない場合は空配列
+    #[serde(rename = "required")]
+          #[validate(nested)]
+    pub required: Vec<models::TagDefinition>,
+
+    /// 任意タグの定義。定義がない場合は空配列
+    #[serde(rename = "optional")]
+          #[validate(nested)]
+    pub optional: Vec<models::TagDefinition>,
+
+}
+
+
+
+impl TagSchema {
+    #[allow(clippy::new_without_default, clippy::too_many_arguments)]
+    pub fn new(version: models::TagSchemaVersion, allow_additional_tags: bool, required: Vec<models::TagDefinition>, optional: Vec<models::TagDefinition>, ) -> TagSchema {
+        TagSchema {
+ version,
+ allow_additional_tags,
+ required,
+ optional,
+        }
+    }
+}
+
+/// Converts the TagSchema value to the Query Parameters representation (style=form, explode=false)
+/// specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde serializer
+impl std::fmt::Display for TagSchema {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: Vec<Option<String>> = vec![
+            // Skipping version in query parameter serialization
+
+
+            Some("allowAdditionalTags".to_string()),
+            Some(self.allow_additional_tags.to_string()),
+
+            // Skipping required in query parameter serialization
+
+            // Skipping optional in query parameter serialization
+
+        ];
+
+        write!(f, "{}", params.into_iter().flatten().collect::<Vec<_>>().join(","))
+    }
+}
+
+/// Converts Query Parameters representation (style=form, explode=false) to a TagSchema value
+/// as specified in https://swagger.io/docs/specification/serialization/
+/// Should be implemented in a serde deserializer
+impl std::str::FromStr for TagSchema {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        /// An intermediate representation of the struct to use for parsing.
+        #[derive(Default)]
+        #[allow(dead_code)]
+        struct IntermediateRep {
+            pub version: Vec<models::TagSchemaVersion>,
+            pub allow_additional_tags: Vec<bool>,
+            pub required: Vec<Vec<models::TagDefinition>>,
+            pub optional: Vec<Vec<models::TagDefinition>>,
+        }
+
+        let mut intermediate_rep = IntermediateRep::default();
+
+        // Parse into intermediate representation
+        let mut string_iter = s.split(',');
+        let mut key_result = string_iter.next();
+
+        while key_result.is_some() {
+            let val = match string_iter.next() {
+                Some(x) => x,
+                None => return std::result::Result::Err("Missing value while parsing TagSchema".to_string())
+            };
+
+            if let Some(key) = key_result {
+                #[allow(clippy::match_single_binding)]
+                match key {
+                    #[allow(clippy::redundant_clone)]
+                    "version" => intermediate_rep.version.push(<models::TagSchemaVersion as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    #[allow(clippy::redundant_clone)]
+                    "allowAdditionalTags" => intermediate_rep.allow_additional_tags.push(<bool as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?),
+                    "required" => return std::result::Result::Err("Parsing a container in this style is not supported in TagSchema".to_string()),
+                    "optional" => return std::result::Result::Err("Parsing a container in this style is not supported in TagSchema".to_string()),
+                    _ => return std::result::Result::Err("Unexpected key while parsing TagSchema".to_string())
+                }
+            }
+
+            // Get the next key
+            key_result = string_iter.next();
+        }
+
+        // Use the intermediate representation to return the struct
+        std::result::Result::Ok(TagSchema {
+            version: intermediate_rep.version.into_iter().next().ok_or_else(|| "version missing in TagSchema".to_string())?,
+            allow_additional_tags: intermediate_rep.allow_additional_tags.into_iter().next().ok_or_else(|| "allowAdditionalTags missing in TagSchema".to_string())?,
+            required: intermediate_rep.required.into_iter().next().ok_or_else(|| "required missing in TagSchema".to_string())?,
+            optional: intermediate_rep.optional.into_iter().next().ok_or_else(|| "optional missing in TagSchema".to_string())?,
+        })
+    }
+}
+
+// Methods for converting between header::IntoHeaderValue<TagSchema> and HeaderValue
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<header::IntoHeaderValue<TagSchema>> for HeaderValue {
+    type Error = String;
+
+    fn try_from(hdr_value: header::IntoHeaderValue<TagSchema>) -> std::result::Result<Self, Self::Error> {
+        let hdr_value = hdr_value.to_string();
+        match HeaderValue::from_str(&hdr_value) {
+             std::result::Result::Ok(value) => std::result::Result::Ok(value),
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Invalid header value for TagSchema - value: {hdr_value} is invalid {e}"#))
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<TagSchema> {
+    type Error = String;
+
+    fn try_from(hdr_value: HeaderValue) -> std::result::Result<Self, Self::Error> {
+        match hdr_value.to_str() {
+             std::result::Result::Ok(value) => {
+                    match <TagSchema as std::str::FromStr>::from_str(value) {
+                        std::result::Result::Ok(value) => std::result::Result::Ok(header::IntoHeaderValue(value)),
+                        std::result::Result::Err(err) => std::result::Result::Err(format!(r#"Unable to convert header value '{value}' into TagSchema - {err}"#))
+                    }
+             },
+             std::result::Result::Err(e) => std::result::Result::Err(format!(r#"Unable to convert header: {hdr_value:?} to string: {e}"#))
+        }
+    }
+}
+
+
+
+/// タグスキーマの形式バージョン
+/// Enumeration of values.
+/// Since this enum's variants do not hold data, we can easily define them as `#[repr(C)]`
+/// which helps with FFI.
+#[allow(non_camel_case_types, clippy::large_enum_variant)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk_enum_derive::LabelledGenericEnum))]
+pub enum TagSchemaVersion {
+    #[serde(rename = "0")]
+    Variant0,
+}
+
+impl validator::Validate for TagSchemaVersion
+{
+    fn validate(&self) -> std::result::Result<(), validator::ValidationErrors> {
+        std::result::Result::Ok(())
+    }
+}
+
+impl std::fmt::Display for TagSchemaVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            TagSchemaVersion::Variant0 => write!(f, "0"),
+        }
+    }
+}
+
+impl std::str::FromStr for TagSchemaVersion {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "0" => std::result::Result::Ok(TagSchemaVersion::Variant0),
+            _ => std::result::Result::Err(format!(r#"Value not valid: {s}"#)),
+        }
+    }
+}
 
 
 /// Text値からなる集合のタグ。要素は順序を持たず、値の重複は許可しない。JSONでは配列として表現する

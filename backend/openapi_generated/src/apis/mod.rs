@@ -1,5 +1,6 @@
 pub mod content_access;
 pub mod contents;
+pub mod tag_schema;
 
 
 

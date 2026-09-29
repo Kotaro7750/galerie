@@ -91,6 +91,18 @@ pub(crate) struct TagSchemaV0 {
 }
 
 impl TagSchemaV0 {
+    pub(crate) fn allow_additional_tags(&self) -> bool {
+        self.allow_additional_tags
+    }
+
+    pub(crate) fn required(&self) -> Option<&HashMap<TagKey, TagDefinition>> {
+        self.required.as_ref()
+    }
+
+    pub(crate) fn optional(&self) -> Option<&HashMap<TagKey, TagDefinition>> {
+        self.optional.as_ref()
+    }
+
     fn validate_format(&self) -> Result<(), String> {
         if let Some(required) = &self.required {
             for (key, def) in required {
