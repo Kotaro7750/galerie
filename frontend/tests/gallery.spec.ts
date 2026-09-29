@@ -32,6 +32,12 @@ test('home introduces the gallery without fetching content', async ({ page }) =>
   await expect(galleryLink).toHaveAttribute('href', '#/contents');
   await expect(galleryLink).toHaveClass(/btn-circle.*btn-primary/);
   await expect(galleryLink.locator('svg')).toHaveClass(/lucide-images/);
+  const createLink = page.getByRole('link', { name: 'コンテンツを登録' });
+  const [galleryBounds, createBounds] = await Promise.all([galleryLink.boundingBox(), createLink.boundingBox()]);
+  expect(galleryBounds).not.toBeNull();
+  expect(createBounds).not.toBeNull();
+  expect(createBounds!.x).toBeGreaterThan(galleryBounds!.x + galleryBounds!.width);
+  expect(createBounds!.y).toBeCloseTo(galleryBounds!.y, 0);
   await expect(page.locator('.divider')).toHaveText('OR');
   expect(requestedPaths).toEqual(['/api/v0/content-access']);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -64,13 +70,137 @@ test('scroll forwards the opaque cursor, opens original content and supports dir
   const original = page.getByRole('img', { name: `コンテンツ ${id}` });
   await expect(original).toHaveAttribute('src', 'https://media.test/original.avif');
   await expect.poll(() => original.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  const resolution = await original.evaluate((img: HTMLImageElement) => `${img.naturalWidth} × ${img.naturalHeight}`);
+  await expect(page.getByRole('img', { name: '解像度（ピクセル）' })).toBeVisible();
+  await expect(page.getByRole('img', { name: '解像度（ピクセル）' })).toHaveClass(/lucide-ruler/);
+  await expect(page.getByText(resolution, { exact: true })).toBeVisible();
   await page.reload();
   await expect(original).toBeVisible();
+  await expect(page.getByText(resolution, { exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'ギャラリーに戻る' }).click();
   await expect(page.getByRole('button', { name: '小さく', exact: true })).toHaveAttribute('aria-pressed', 'false');
   await page.getByRole('button', { name: '一覧を更新' }).click();
   await expect.poll(() => requests.at(-1)).toBe(null);
   await page.screenshot({ path: `test-results/gallery-${test.info().project.name}.png`, fullPage: true });
+});
+
+test('moves within the opened search results without fetching more pages and stays fullscreen', async ({ page }) => {
+  const entries = [content(0), content(1), content(2)].map((item) => ({
+    ...item, contentUrl: `https://media.test/${item.id}.avif`, thumbnailUrl: `https://media.test/${item.id}.avif`,
+  }));
+  let listRequests = 0;
+  await page.route('**/api/v0/contents?*', (route) => {
+    listRequests++;
+    return route.fulfill({ json: { items: entries } });
+  });
+  await page.route('**/api/v0/contents/*', (route) => {
+    const item = entries.find(({ id: itemId }) => route.request().url().endsWith(`/${itemId}`));
+    return route.fulfill(item ? { json: item.id === entries[1].id ? { ...item, contentUrl: 'https://media.test/updated.avif' } : item } : { status: 404 });
+  });
+  await page.route('https://media.test/**', (route) => route.fulfill({
+    path: '../sample/00065786-f916-4e2c-85bc-3db5e4c0cb71.avif', contentType: 'image/avif',
+  }));
+  await page.goto('/#/contents');
+  await page.getByRole('link', { name: '画像 1 を開く', exact: true }).click();
+  await page.getByRole('button', { name: '前のコンテンツ' }).click();
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[2].id}$`));
+  await page.getByRole('button', { name: '次のコンテンツ' }).click();
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[0].id}$`));
+  await page.getByRole('button', { name: '次のコンテンツ' }).click();
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[1].id}$`));
+  await expect(page.getByRole('img', { name: `コンテンツ ${entries[1].id}` })).toHaveAttribute('src', 'https://media.test/updated.avif');
+  await page.getByRole('button', { name: '全画面表示', exact: true }).click();
+  const fullscreen = page.locator(':fullscreen');
+  await expect(fullscreen).toHaveCount(1);
+  await fullscreen.getByRole('button', { name: '次のコンテンツ' }).click();
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[2].id}$`));
+  await expect(fullscreen).toHaveCount(1);
+  await expect(fullscreen.getByRole('img', { name: `コンテンツ ${entries[2].id}` })).toHaveAttribute('src', entries[2].contentUrl);
+  await fullscreen.getByRole('button', { name: '次のコンテンツ' }).click();
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[0].id}$`));
+  await expect(fullscreen).toHaveCount(1);
+  await fullscreen.getByRole('button', { name: '前のコンテンツ' }).click();
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[2].id}$`));
+  await expect(fullscreen).toHaveCount(1);
+  await fullscreen.getByRole('button', { name: '全画面表示を解除' }).click();
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[0].id}$`));
+  await expect(page.locator('.swiper-slide-active').getByRole('img', { name: `コンテンツ ${entries[0].id}` })).toBeVisible();
+  expect(listRequests).toBe(1);
+});
+
+test('mobile flick changes the selected content in normal and fullscreen views', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'touch gesture');
+  const entries = [content(0), content(1), content(2)].map((item) => ({
+    ...item, contentUrl: `https://media.test/${item.id}.avif`, thumbnailUrl: `https://media.test/${item.id}.avif`,
+  }));
+  await page.route('**/api/v0/contents?*', (route) => route.fulfill({ json: { items: entries } }));
+  await page.route('**/api/v0/contents/*', (route) => {
+    const item = entries.find(({ id: itemId }) => route.request().url().endsWith(`/${itemId}`));
+    return route.fulfill(item ? { json: item } : { status: 404 });
+  });
+  await page.route('https://media.test/**', (route) => route.fulfill({
+    path: '../sample/00065786-f916-4e2c-85bc-3db5e4c0cb71.avif', contentType: 'image/avif',
+  }));
+  const session = await page.context().newCDPSession(page);
+  async function flick(target: ReturnType<typeof page.locator>) {
+    const box = await target.boundingBox();
+    expect(box).not.toBeNull();
+    const y = box!.y + box!.height / 2;
+    const startX = box!.x + box!.width * 0.8;
+    const endX = box!.x + box!.width * 0.2;
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: startX, y }] });
+    for (let step = 1; step <= 5; step++) {
+      await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: startX + (endX - startX) * step / 5, y }] });
+    }
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  }
+  await page.goto('/#/contents');
+  await page.getByRole('link', { name: '画像 2 を開く', exact: true }).click();
+  await expect(page.locator('.swiper-slide-active').getByRole('img', { name: `コンテンツ ${entries[1].id}` })).toBeVisible();
+  await flick(page.locator('.swiper'));
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[2].id}$`));
+  await page.getByRole('button', { name: '全画面表示', exact: true }).click();
+  const fullscreen = page.locator(':fullscreen');
+  await flick(fullscreen.locator('.swiper'));
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[0].id}$`));
+  await expect(fullscreen).toHaveCount(1);
+});
+
+test('does not load the next search page while moving between contents', async ({ page }) => {
+  const entries = Array.from({ length: 30 }, (_, index) => content(index));
+  const cursors: (string | null)[] = [];
+  await page.route('**/api/v0/contents?*', (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get('cursor');
+    cursors.push(cursor);
+    return route.fulfill({ json: cursor ? { items: [content(30)] } : { items: entries, nextCursor: 'later' } });
+  });
+  await page.route('**/api/v0/contents/*', (route) => {
+    const item = entries.find(({ id: itemId }) => route.request().url().endsWith(`/${itemId}`));
+    return route.fulfill(item ? { json: item } : { status: 404 });
+  });
+  await mockImages(page);
+  await page.goto('/#/contents');
+  await page.getByRole('link', { name: '画像 1 を開く', exact: true }).click();
+  await page.getByRole('button', { name: '次のコンテンツ' }).click();
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[1].id}$`));
+  expect(cursors).toEqual([null]);
+});
+
+test('two loaded contents also wrap in both directions', async ({ page }) => {
+  const entries = [content(0), content(1)];
+  await page.route('**/api/v0/contents?*', (route) => route.fulfill({ json: { items: entries } }));
+  await page.route('**/api/v0/contents/*', (route) => {
+    const item = entries.find(({ id: itemId }) => route.request().url().endsWith(`/${itemId}`));
+    return route.fulfill(item ? { json: item } : { status: 404 });
+  });
+  await mockImages(page);
+  await page.goto('/#/contents');
+  await page.getByRole('link', { name: '画像 1 を開く', exact: true }).click();
+  await page.getByRole('button', { name: '前のコンテンツ' }).click();
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[1].id}$`));
+  await page.getByRole('button', { name: '次のコンテンツ' }).click();
+  await expect(page).toHaveURL(new RegExp(`/contents/${entries[0].id}$`));
 });
 
 test('empty, loading and request failure states offer recovery', async ({ page }) => {
@@ -119,10 +249,13 @@ test('handles missing content and broken image delivery', async ({ page }) => {
   await page.route('https://media.test/**', (route) => route.abort());
   await page.getByRole('button', { name: '再試行', exact: true }).click();
   await expect(page.getByText('画像を読み込めませんでした')).toBeVisible();
+  await expect(page.getByRole('img', { name: '解像度（ピクセル）' })).toHaveCount(0);
   await page.unroute('https://media.test/**');
   await mockImages(page);
   await page.getByRole('button', { name: '画像を再読み込み' }).click();
   await expect.poll(() => page.getByRole('img', { name: `コンテンツ ${id}`, exact: true }).evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  await expect(page.getByRole('button', { name: '前のコンテンツ' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '次のコンテンツ' })).toHaveCount(0);
   await page.goto('/#/missing');
   await expect(page.getByRole('heading', { name: 'ページが見つかりません' })).toBeVisible();
 });
@@ -283,6 +416,8 @@ test('omits empty tag overlays and shows the empty state on the content page', a
   await expect(page.getByRole('region', { name: '画像 1 のタグ', exact: true })).toHaveCount(0);
   await card.click();
   await expect(page.getByText('タグはありません', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '前のコンテンツ' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '次のコンテンツ' })).toHaveCount(0);
 });
 
 test('starts a short tag list at the top of the thumbnail', async ({ page, isMobile }) => {
@@ -373,10 +508,12 @@ test('fullscreen shows the image and restores the detail view on exit', async ({
   await mockImages(page);
   await page.route(`**/api/v0/contents/${id}`, (route) => route.fulfill({ json: content(0) }));
   await page.goto(`/#/contents/${id}`);
+  await expect(page.getByRole('button', { name: '全画面表示', exact: true }).locator('svg')).toHaveClass(/lucide-fullscreen/);
   await page.getByRole('button', { name: '全画面表示', exact: true }).click();
   const fullscreen = page.locator(':fullscreen');
   await expect(fullscreen).toHaveCount(1);
   await expect(fullscreen.getByRole('img', { name: `コンテンツ ${id}`, exact: true })).toBeVisible();
+  await expect(fullscreen.getByRole('button', { name: '全画面表示を解除', exact: true }).locator('svg')).toHaveClass(/lucide-minimize/);
   await fullscreen.getByRole('button', { name: '全画面表示を解除', exact: true }).click();
   await expect(fullscreen).toHaveCount(0);
   await expect(page.getByRole('button', { name: '全画面表示', exact: true })).toBeVisible();

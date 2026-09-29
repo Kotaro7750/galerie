@@ -25,6 +25,28 @@ test('selects and previews a local AVIF, then sends typed tags only on registrat
   await expect(mediaType.locator('..')).toHaveClass(/btn-soft/);
   await page.getByLabel('アップロードするファイル').setInputFiles(sample);
   await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toBeVisible();
+  const caption = page.locator('figcaption');
+  await expect(caption.getByLabel('表示中の画像')).toHaveText('1 / 1');
+  const [positionBounds, sizeBounds, resolutionBounds] = await Promise.all([
+    caption.getByLabel('表示中の画像').boundingBox(),
+    caption.getByRole('img', { name: 'ファイルサイズ' }).boundingBox(),
+    caption.getByRole('img', { name: '解像度（ピクセル）' }).boundingBox(),
+  ]);
+  expect(positionBounds).not.toBeNull();
+  expect(sizeBounds).not.toBeNull();
+  expect(resolutionBounds).not.toBeNull();
+  expect(positionBounds!.x).toBeLessThan(sizeBounds!.x);
+  expect(sizeBounds!.x).toBeLessThan(resolutionBounds!.x);
+  expect(sizeBounds!.y).toBeCloseTo(resolutionBounds!.y, 0);
+  const [captionBounds, previewBounds] = await Promise.all([caption.boundingBox(), page.getByRole('img', { name: '登録するコンテンツのプレビュー' }).boundingBox()]);
+  expect(captionBounds).not.toBeNull();
+  expect(previewBounds).not.toBeNull();
+  expect(captionBounds!.y + captionBounds!.height).toBeLessThanOrEqual(previewBounds!.y);
+  await expect(caption).not.toContainText('00065786-f916-4e2c-85bc-3db5e4c0cb71.avif');
+  await expect(caption.getByRole('img', { name: 'ファイルサイズ' })).toBeVisible();
+  await expect(caption.getByText(/MiB/)).toBeVisible();
+  await expect(caption.getByRole('img', { name: '解像度（ピクセル）' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '登録する' }).locator('svg')).toHaveClass(/lucide-save/);
   await page.getByLabel('タグ名').fill('category');
   await page.getByLabel('タグの型').selectOption('text');
   await page.getByLabel('値 1', { exact: true }).fill('landscape');
@@ -67,11 +89,11 @@ test('fetches a URL into the local preview and keeps API requests pending', asyn
   await expect(page.getByRole('button', { name: '登録する' })).toBeEnabled();
   await page.getByRole('button', { name: 'ファイルから追加' }).click();
   await expect(page.getByLabel('コンテンツ URL')).toHaveCount(0);
-  await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '登録する' })).toBeDisabled();
+  await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '登録する' })).toBeEnabled();
 });
 
-test('clears the URL and its prepared preview', async ({ page }) => {
+test('clears the URL while keeping the prepared image', async ({ page }) => {
   await page.route('**/source.avif', (route) => route.fulfill({ path: sample, contentType: 'image/avif' }));
   await page.goto('/#/contents/new');
   await page.getByRole('button', { name: 'URL から追加' }).click();
@@ -80,8 +102,26 @@ test('clears the URL and its prepared preview', async ({ page }) => {
   await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toBeVisible();
   await page.getByRole('button', { name: 'URL をクリア' }).click();
   await expect(page.getByLabel('コンテンツ URL')).toHaveValue('');
-  await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '登録する' })).toBeDisabled();
+  await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '登録する' })).toBeEnabled();
+});
+
+test('shows the centered loading component while preparing a URL image', async ({ page }) => {
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/slow.avif', async (route) => {
+    await pending;
+    await route.fulfill({ path: sample, contentType: 'image/avif' });
+  });
+  await page.goto('/#/contents/new');
+  await page.getByRole('button', { name: 'URL から追加' }).click();
+  await page.getByLabel('コンテンツ URL').fill(new URL('/slow.avif', page.url()).href);
+  await page.getByRole('button', { name: 'URL をプレビュー' }).click();
+  const loading = page.getByRole('status').filter({ hasText: 'コンテンツを準備中…' });
+  await expect(loading.locator('.loading')).toBeVisible();
+  await expect(loading).toHaveCSS('justify-content', 'center');
+  release();
+  await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toBeVisible();
 });
 
 test('pastes an image into the same local preparation flow', async ({ page }) => {
@@ -99,10 +139,167 @@ test('pastes an image into the same local preparation flow', async ({ page }) =>
   });
   await expect(page.getByRole('button', { name: 'ファイルから追加' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toHaveJSProperty('naturalWidth', 12);
-  await expect(page.getByText('clipboard.avif', { exact: false })).toBeVisible();
+  await expect(page.getByRole('img', { name: '解像度（ピクセル）' })).toBeVisible();
+  await expect(page.getByRole('img', { name: '解像度（ピクセル）' })).toHaveClass(/lucide-ruler/);
+  await expect(page.getByText('12 × 12', { exact: true })).toBeVisible();
+  await expect(page.locator('figcaption')).not.toContainText('clipboard.avif');
   await expect(page.getByRole('button', { name: '登録する' })).toBeEnabled();
   await page.getByRole('button', { name: 'URL から追加' }).click();
   await expect(page.getByLabel('コンテンツ URL')).toHaveValue('');
+  await expect(page.getByRole('img', { name: '解像度（ピクセル）' })).toBeVisible();
+});
+
+test('adds multiple images, shows progress, and retries only failures', async ({ page }) => {
+  let posts = 0;
+  let releaseSecond!: () => void;
+  const secondPending = new Promise<void>((resolve) => { releaseSecond = resolve; });
+  await page.route('**/api/v0/contents', async (route) => {
+    posts++;
+    if (posts === 1) {
+      await route.fulfill({ status: 400, contentType: 'application/problem+json', body: JSON.stringify({ status: 400, title: 'Invalid', detail: 'First failed.' }) });
+    } else {
+      if (posts === 2) await secondPending;
+      await route.fulfill({ status: 201, json: { id, mediaType: 'image/avif', contentUrl: '/created.avif', thumbnailUrl: '/created.avif', tags: [], diagnostics: [] } });
+    }
+  });
+  await page.route(`**/api/v0/contents/${id}`, (route) => route.fulfill({ json: { id, mediaType: 'image/avif', contentUrl: '/created.avif', thumbnailUrl: '/created.avif', tags: [], diagnostics: [] } }));
+  await page.route('**/created.avif', (route) => route.fulfill({ path: sample, contentType: 'image/avif' }));
+  await page.goto('/#/contents/new');
+  await page.getByLabel('アップロードするファイル').setInputFiles([sample, sample]);
+  await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toHaveCount(2);
+  await page.getByRole('button', { name: '次の画像' }).click();
+  await page.getByRole('button', { name: '前の画像' }).click();
+  await page.getByRole('button', { name: '登録する' }).click();
+  await expect(page.getByRole('progressbar')).toHaveAttribute('value', '1');
+  await expect(page.getByRole('status').filter({ has: page.getByRole('progressbar') })).toContainText('1 / 2');
+  releaseSecond();
+  await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toHaveCount(1);
+  await expect(page.getByRole('alert')).toHaveText('First failed.');
+  await expect(page.getByRole('button', { name: '登録する' })).toBeEnabled();
+  expect(posts).toBe(2);
+  await page.getByRole('button', { name: '登録する' }).click();
+  await expect(page).toHaveURL(new RegExp(`#\\/contents\\/${id}$`));
+  expect(posts).toBe(3);
+});
+
+test('removes one selected image from the carousel', async ({ page }) => {
+  await page.goto('/#/contents/new');
+  await page.getByLabel('アップロードするファイル').setInputFiles([sample, sample]);
+  await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toHaveCount(2);
+  const activeSlide = page.locator('.swiper-slide-active');
+  const image = activeSlide.getByRole('img', { name: '登録するコンテンツのプレビュー' });
+  const remove = activeSlide.getByRole('button', { name: '1 件目のコンテンツを削除' });
+  const [imageBounds, buttonBounds] = await Promise.all([image.boundingBox(), remove.boundingBox()]);
+  expect(imageBounds).not.toBeNull();
+  expect(buttonBounds).not.toBeNull();
+  expect(buttonBounds!.x).toBeGreaterThanOrEqual(imageBounds!.x);
+  expect(buttonBounds!.x + buttonBounds!.width).toBeLessThanOrEqual(imageBounds!.x + imageBounds!.width);
+  expect(buttonBounds!.y).toBeGreaterThanOrEqual(imageBounds!.y);
+  expect(buttonBounds!.y + buttonBounds!.height).toBeLessThanOrEqual(imageBounds!.y + imageBounds!.height);
+  await expect(remove).toHaveClass(/btn-circle/);
+  await remove.click();
+  await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toHaveCount(1);
+  await page.getByRole('button', { name: '1 件目のコンテンツを削除' }).click();
+  await expect(page.getByRole('button', { name: '登録する' })).toBeDisabled();
+});
+
+test('carousel buttons wrap at both ends and show the current position', async ({ page }) => {
+  await page.goto('/#/contents/new');
+  await page.getByLabel('アップロードするファイル').setInputFiles([sample, sample]);
+  const position = page.getByLabel('表示中の画像');
+  await expect(position).toHaveText('1 / 2');
+  const imageBounds = await page.locator('.swiper-slide-active').getByRole('img', { name: '登録するコンテンツのプレビュー' }).boundingBox();
+  const [previousBounds, nextBounds] = await Promise.all([
+    page.getByRole('button', { name: '前の画像' }).boundingBox(),
+    page.getByRole('button', { name: '次の画像' }).boundingBox(),
+  ]);
+  expect(imageBounds).not.toBeNull();
+  expect(previousBounds).not.toBeNull();
+  expect(nextBounds).not.toBeNull();
+  expect(previousBounds!.x).toBeGreaterThanOrEqual(imageBounds!.x);
+  expect(nextBounds!.x + nextBounds!.width).toBeLessThanOrEqual(imageBounds!.x + imageBounds!.width);
+  expect(previousBounds!.y).toBeGreaterThan(imageBounds!.y);
+  expect(nextBounds!.y + nextBounds!.height).toBeLessThan(imageBounds!.y + imageBounds!.height);
+  await page.getByRole('button', { name: '前の画像' }).click();
+  await expect(page.locator('.swiper-slide-active').getByRole('button', { name: '2 件目のコンテンツを削除' })).toBeVisible();
+  await expect(position).toHaveText('2 / 2');
+  await page.getByRole('button', { name: '次の画像' }).click();
+  await expect(page.locator('.swiper-slide-active').getByRole('button', { name: '1 件目のコンテンツを削除' })).toBeVisible();
+  await expect(position).toHaveText('1 / 2');
+  await page.getByRole('button', { name: '次の画像' }).click();
+  await expect(position).toHaveText('2 / 2');
+});
+
+test('carousel height follows the displayed image', async ({ page }) => {
+  await page.goto('/#/contents/new');
+  const pngs = await page.evaluate(() => [[200, 100], [100, 250]].map(([width, height]) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    canvas.getContext('2d')!.fillRect(0, 0, width, height);
+    return canvas.toDataURL('image/png').split(',')[1];
+  }));
+  await page.getByLabel('アップロードするファイル').setInputFiles(pngs.map((png, index) => ({ name: `image-${index}.png`, mimeType: 'image/png', buffer: Buffer.from(png, 'base64') })));
+  await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toHaveCount(2);
+  const wrapper = page.locator('.swiper-wrapper');
+  const active = page.locator('.swiper-slide-active');
+  await expect(active.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toHaveJSProperty('naturalHeight', 100);
+  await expect.poll(async () => Math.abs((await wrapper.boundingBox())!.height - (await active.boundingBox())!.height)).toBeLessThan(2);
+  const firstHeight = (await wrapper.boundingBox())!.height;
+  await page.getByRole('button', { name: '次の画像' }).click();
+  await expect(active.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toHaveJSProperty('naturalHeight', 250);
+  await expect.poll(async () => Math.abs((await wrapper.boundingBox())!.height - (await active.boundingBox())!.height)).toBeLessThan(2);
+  expect((await wrapper.boundingBox())!.height).toBeGreaterThan(firstHeight + 50);
+});
+
+test('mobile touch swipe moves to the next draft image', async ({ page }) => {
+  test.skip(test.info().project.name !== 'mobile');
+  await page.goto('/#/contents/new');
+  await page.getByLabel('アップロードするファイル').setInputFiles([sample, sample]);
+  await expect(page.locator('.swiper-slide-active').getByRole('button', { name: '1 件目のコンテンツを削除' })).toBeVisible();
+  const box = await page.locator('.swiper').boundingBox();
+  expect(box).not.toBeNull();
+  const session = await page.context().newCDPSession(page);
+  const y = box!.y + box!.height / 2;
+  async function flick(left: boolean) {
+    const startX = box!.x + box!.width * (left ? 0.8 : 0.2);
+    const endX = box!.x + box!.width * (left ? 0.2 : 0.8);
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: startX, y }] });
+    for (let step = 1; step <= 5; step++) {
+      await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: startX + (endX - startX) * step / 5, y }] });
+    }
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  }
+  await flick(true);
+  await expect(page.locator('.swiper-slide-active').getByRole('button', { name: '2 件目のコンテンツを削除' })).toBeVisible();
+  await expect(page.getByLabel('表示中の画像')).toHaveText('2 / 2');
+  await flick(true);
+  await expect(page.locator('.swiper-slide-active').getByRole('button', { name: '1 件目のコンテンツを削除' })).toBeVisible();
+  await expect(page.getByLabel('表示中の画像')).toHaveText('1 / 2');
+  await flick(false);
+  await expect(page.locator('.swiper-slide-active').getByRole('button', { name: '2 件目のコンテンツを削除' })).toBeVisible();
+});
+
+test('adds a URL image after a file and navigates after both registrations succeed', async ({ page }) => {
+  const ids = [id, '10000000-0000-4000-8000-000000000002'];
+  let posts = 0;
+  await page.route('**/source.avif', (route) => route.fulfill({ path: sample, contentType: 'image/avif' }));
+  await page.route('**/api/v0/contents', (route) => {
+    const createdId = ids[posts++];
+    return route.fulfill({ status: 201, json: { id: createdId, mediaType: 'image/avif', contentUrl: '/created.avif', thumbnailUrl: '/created.avif', tags: [], diagnostics: [] } });
+  });
+  await page.route(`**/api/v0/contents/${ids[1]}`, (route) => route.fulfill({ json: { id: ids[1], mediaType: 'image/avif', contentUrl: '/created.avif', thumbnailUrl: '/created.avif', tags: [], diagnostics: [] } }));
+  await page.route('**/created.avif', (route) => route.fulfill({ path: sample, contentType: 'image/avif' }));
+  await page.goto('/#/contents/new');
+  await page.getByLabel('アップロードするファイル').setInputFiles(sample);
+  await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toHaveCount(1);
+  await page.getByRole('button', { name: 'URL から追加' }).click();
+  await page.getByLabel('コンテンツ URL').fill(new URL('/source.avif', page.url()).href);
+  await page.getByRole('button', { name: 'URL をプレビュー' }).click();
+  await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toHaveCount(2);
+  expect(posts).toBe(0);
+  await page.getByRole('button', { name: '登録する' }).click();
+  await expect(page).toHaveURL(new RegExp(`#\\/contents\\/${ids[1]}$`));
+  expect(posts).toBe(2);
 });
 
 test('listing link opens registration and a rejected request keeps the local draft', async ({ page }) => {
@@ -144,7 +341,8 @@ test('converts a PNG locally before preview and sends AVIF only on registration'
   const preview = page.getByRole('img', { name: '登録するコンテンツのプレビュー' });
   await expect(preview).toBeVisible();
   await expect(preview).toHaveJSProperty('naturalWidth', 16);
-  await expect(page.getByText('sample.avif', { exact: false })).toBeVisible();
+  await expect(page.getByText('16 × 16', { exact: true })).toBeVisible();
+  await expect(page.locator('figcaption')).not.toContainText('sample.avif');
   expect(posts).toHaveLength(0);
   await page.getByRole('button', { name: '登録する' }).click();
   await expect(page.getByRole('alert')).toBeVisible();
@@ -169,6 +367,6 @@ test('converts an image from a URL in the browser without contacting the registr
   await page.getByLabel('コンテンツ URL').fill(new URL('/source.png', page.url()).href);
   await page.getByRole('button', { name: 'URL をプレビュー' }).click();
   await expect(page.getByRole('img', { name: '登録するコンテンツのプレビュー' })).toHaveJSProperty('naturalWidth', 12);
-  await expect(page.getByText('source.avif', { exact: false })).toBeVisible();
+  await expect(page.locator('figcaption')).not.toContainText('source.avif');
   expect(posts).toBe(0);
 });

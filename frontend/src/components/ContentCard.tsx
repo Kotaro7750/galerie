@@ -6,8 +6,9 @@ import { useSearchStore } from '../store';
 import { TriangleAlert } from 'lucide-react';
 import { diagnosticReasons } from '../tagPresentation';
 import { useState } from 'react';
+import type { ContentNavigationItem } from '../contentNavigation';
 
-export function ContentCard({ item, index }: { item: Content; index: number }) {
+export function ContentCard({ item, index, navigationItems }: { item: Content; index: number; navigationItems: ContentNavigationItem[] }) {
   const { draft, applyTerms } = useSearchStore();
   const [diagnosticHovered, setDiagnosticHovered] = useState(false);
   const [diagnosticFocused, setDiagnosticFocused] = useState(false);
@@ -15,7 +16,7 @@ export function ContentCard({ item, index }: { item: Content; index: number }) {
   return <div className="group hover-3d min-w-0">
     <div className="card image-full relative aspect-square min-w-0 overflow-clip bg-base-200">
       <div className="aspect-square overflow-hidden"><ContentImage key={item.thumbnailUrl} src={item.thumbnailUrl} alt={`画像 ${index + 1} のサムネイル`} thumbnail /></div>
-      <Link className="absolute inset-0" to={`/contents/${item.id}`} aria-label={`画像 ${index + 1} を開く`} />
+      <Link className="absolute inset-0" to={`/contents/${item.id}`} state={{ navigationItems }} aria-label={`画像 ${index + 1} を開く`} />
       {(item.tags.length > 0 || item.diagnostics.length > 0) && <div className="card-body absolute inset-x-0 top-0 z-10 flex h-2/3 min-h-0 flex-col justify-start gap-1 overflow-visible p-2 pointer-events-none [@media(hover:hover)]:invisible group-hover:visible group-focus-within:visible" role="region" aria-label={`画像 ${index + 1} のタグ`}>
         <div className="min-h-0 overflow-y-auto overscroll-contain pointer-events-auto" aria-label="タグをスクロール">
           <ContentTags tags={item.tags} diagnostics={item.diagnostics} showDiagnostics={false} leadingItem={item.diagnostics.length > 0 &&

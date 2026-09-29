@@ -5,5 +5,6 @@ export function useContent(contentId: string) {
   return useQuery({
     queryKey: ['content', contentId],
     queryFn: ({ signal }) => apiRequest(contentsApi.getContent({ contentId }, { signal })),
+    placeholderData: (previous) => previous,
   });
 }

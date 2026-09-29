@@ -8,8 +8,10 @@ export function HomePage() {
       <h1 className="text-3xl font-bold">Galerie</h1>
       <ContentSearch />
       <div className="divider">OR</div>
-      <IconLink className="btn-circle btn-primary" icon={Images} label="ギャラリーを開く" to="/contents" />
-      <IconLink className="btn-circle btn-secondary" icon={Plus} label="コンテンツを登録" to="/contents/new" />
+      <div className="flex items-center justify-center gap-4">
+        <IconLink className="btn-circle btn-primary" icon={Images} label="ギャラリーを開く" to="/contents" />
+        <IconLink className="btn-circle btn-secondary" icon={Plus} label="コンテンツを登録" to="/contents/new" />
+      </div>
     </div>
   </section>;
 }
