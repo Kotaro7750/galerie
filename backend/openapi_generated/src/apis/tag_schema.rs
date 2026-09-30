@@ -12,7 +12,7 @@ use crate::{models, types::*};
 #[must_use]
 #[allow(clippy::large_enum_variant)]
 pub enum GetTagSchemaResponse {
-    /// 現在有効なタグスキーマ
+    /// タグスキーマ
     Status200
     (models::TagSchema)
     ,
@@ -28,7 +28,7 @@ pub enum GetTagSchemaResponse {
 #[async_trait]
 #[allow(clippy::ptr_arg)]
 pub trait TagSchema<E: std::fmt::Debug + Send + Sync + 'static = ()>: super::ErrorHandler<E> {
-    /// 有効なタグスキーマの取得.
+    /// タグスキーマの取得.
     ///
     /// GetTagSchema - GET /api/v0/tag-schema
     async fn get_tag_schema(

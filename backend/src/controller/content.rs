@@ -1,6 +1,6 @@
 use axum::Json;
 use axum::body::Bytes;
-use axum::extract::rejection::{PathRejection, QueryRejection};
+use axum::extract::rejection::{JsonRejection, PathRejection, QueryRejection};
 use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::response::IntoResponse;
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart, TypedMultipartError};
@@ -10,15 +10,19 @@ use http::header::{CONTENT_TYPE, LOCATION};
 use std::collections::HashSet;
 
 use galerie_api::models::{
-    BadRequestProblem, Content, ContentNotFoundProblem, ContentPage, GetContentPathParams,
-    InternalServerErrorProblem, SearchTerm, UnsupportedMediaTypeProblem,
+    BadRequestProblem, Content, ContentNotFoundProblem, ContentPage, DeleteContentPathParams,
+    GetContentPathParams, InternalServerErrorProblem, SearchTerm, UnsupportedMediaTypeProblem,
+    UpdateContentPathParams,
 };
 
 use crate::domain::search_condition::{FileFormatPredicate, TagPredicate, Term};
 use crate::domain::tag::xmp::check_xmp_roundtrip;
 use crate::domain::tag::{Tag, TagKey, TagSet};
 use crate::domain::tag_schema::TagSchema;
-use crate::usecase::{CreateContentUseCase, GetContentUseCase, ListContentsUseCase};
+use crate::usecase::{
+    CreateContentUseCase, DeleteContentUseCase, GetContentUseCase, ListContentsUseCase,
+    UpdateContentUseCase,
+};
 use crate::{domain, usecase};
 
 #[derive(serde::Deserialize)]
@@ -41,6 +45,8 @@ pub(crate) struct ContentController {
     list_contents: ListContentsUseCase,
     get_content: GetContentUseCase,
     create_content: CreateContentUseCase,
+    update_content: UpdateContentUseCase,
+    delete_content: DeleteContentUseCase,
 }
 
 impl ContentController {
@@ -49,18 +55,27 @@ impl ContentController {
         list_contents: usecase::ListContentsUseCase,
         get_content: usecase::GetContentUseCase,
         create_content: usecase::CreateContentUseCase,
+        update_content: usecase::UpdateContentUseCase,
+        delete_content: usecase::DeleteContentUseCase,
     ) -> Self {
         ContentController {
             tag_schema,
             list_contents,
             get_content,
             create_content,
+            update_content,
+            delete_content,
         }
     }
 
     pub(crate) fn router(self) -> axum::Router {
         axum::Router::new()
-            .route("/{content_id}", axum::routing::get(Self::get_content))
+            .route(
+                "/{content_id}",
+                axum::routing::get(Self::get_content)
+                    .patch(Self::update_content)
+                    .delete(Self::delete_content),
+            )
             .route(
                 "/",
                 axum::routing::get(Self::list_contents).post(Self::create_content),
@@ -113,6 +128,36 @@ impl ContentController {
         let content = this.get_content.execute(id).await?;
 
         Ok(Json(content.into()))
+    }
+
+    async fn update_content(
+        State(this): State<Self>,
+        path: Result<Path<UpdateContentPathParams>, PathRejection>,
+        input: Result<Json<ContentMetadataInput>, JsonRejection>,
+    ) -> Result<Json<Content>, ContentControllerError> {
+        let id = path?.content_id.parse::<domain::ContentId>().map_err(|e| {
+            ContentControllerError::BadRequest(format!("invalid contentId, err: {}", e))
+        })?;
+
+        let Json(input) = input.map_err(|e| ContentControllerError::BadRequest(e.to_string()))?;
+        let tags = normalize_input_tags(input, &this.tag_schema)?;
+
+        let content = this.update_content.execute(id, tags).await?;
+
+        Ok(Json(content.into()))
+    }
+
+    async fn delete_content(
+        State(this): State<Self>,
+        path: Result<Path<DeleteContentPathParams>, PathRejection>,
+    ) -> Result<StatusCode, ContentControllerError> {
+        let id = path?.content_id.parse::<domain::ContentId>().map_err(|e| {
+            ContentControllerError::BadRequest(format!("invalid contentId, err: {}", e))
+        })?;
+
+        this.delete_content.execute(id).await?;
+
+        Ok(StatusCode::NO_CONTENT)
     }
 
     pub(crate) async fn list_contents(
@@ -219,6 +264,13 @@ struct ContentMetadataInput {
 fn parse_input_tags(metadata: &[u8], schema: &TagSchema) -> Result<TagSet, ContentControllerError> {
     let input: ContentMetadataInput = serde_json::from_slice(metadata)
         .map_err(|e| ContentControllerError::BadRequest(format!("Invalid metadata: {e}")))?;
+    normalize_input_tags(input, schema)
+}
+
+fn normalize_input_tags(
+    input: ContentMetadataInput,
+    schema: &TagSchema,
+) -> Result<TagSet, ContentControllerError> {
     let mut tags = Vec::with_capacity(input.tags.len());
     for input_tag in input.tags {
         let tag = match input_tag {
@@ -413,8 +465,132 @@ mod tests {
 
     use super::*;
     use crate::domain::tag::{IntegerTagValue, RealTagValue, Tag, TagKey, TagSet, TextTagValue};
+    use crate::infrastructure::content_storage::filesystem::FileSystemContentStorage;
     use crate::infrastructure::metadata_index::InMemoryMetadataIndex;
     use crate::port::MetadataIndex;
+
+    #[tokio::test]
+    async fn patch_and_delete_update_storage_and_index() {
+        let directory =
+            std::env::temp_dir().join(format!("galerie-content-test-{}", Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let id: domain::ContentId = Uuid::new_v4().try_into().unwrap();
+        let content_path = directory.join(format!("{}.avif", id.as_ref()));
+        let xmp_path = directory.join(format!("{}.xmp", id.as_ref()));
+        std::fs::write(&content_path, b"original").unwrap();
+        std::fs::write(&xmp_path, concat!(
+            "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">",
+            "<rdf:Description xmlns:galerie=\"galerie\" xmlns:other=\"urn:other\" galerie:old=\"old\" other:creator=\"Alice\"/>",
+            "</rdf:RDF></x:xmpmeta>"
+        )).unwrap();
+        let storage = Arc::new(
+            FileSystemContentStorage::new(
+                directory.to_str().unwrap(),
+                "https://example.com",
+                "https://example.com",
+            )
+            .unwrap(),
+        );
+        let index = Arc::new(InMemoryMetadataIndex::new());
+        index
+            .add_contents(&[domain::Content::new(
+                id,
+                domain::MediaType::Avif,
+                "https://example.com/a.avif".parse().unwrap(),
+                "https://example.com/a.avif".parse().unwrap(),
+                TagSet::new(&[]).unwrap(),
+                HashSet::new(),
+            )])
+            .await
+            .unwrap();
+        let controller = ContentController::new(
+            TagSchema::default(),
+            ListContentsUseCase::new(index.clone()),
+            GetContentUseCase::new(index.clone()),
+            CreateContentUseCase::new(storage.clone(), index.clone()),
+            UpdateContentUseCase::new(storage.clone(), index.clone()),
+            DeleteContentUseCase::new(storage, index.clone()),
+        );
+        let router = controller.router();
+        let uri = format!("/{}", id.as_ref());
+        let original_xmp = std::fs::read(&xmp_path).unwrap();
+        let invalid = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(&uri)
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"tags":[{"key":"invalid-key","type":"text","value":"bad"}]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(std::fs::read(&xmp_path).unwrap(), original_xmp);
+        for (content_type, body) in [(Some("application/json"), "{"), (None, r#"{"tags":[]}"#)] {
+            let mut request = Request::builder().method("PATCH").uri(&uri);
+            if let Some(content_type) = content_type {
+                request = request.header(CONTENT_TYPE, content_type);
+            }
+            let response = router
+                .clone()
+                .oneshot(request.body(Body::from(body)).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert_eq!(std::fs::read(&xmp_path).unwrap(), original_xmp);
+        }
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(&uri)
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"tags":[{"key":"title","type":"text","value":"new"}]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            index.get_content(id).await.unwrap().tags().as_ref().len(),
+            1
+        );
+        let xmp = std::fs::read_to_string(&xmp_path).unwrap();
+        let metadata: xmp_toolkit::XmpMeta = xmp.parse().unwrap();
+        assert!(metadata.property("galerie", "old").is_none());
+        assert_eq!(metadata.property("galerie", "title").unwrap().value, "new");
+        assert_eq!(
+            metadata.property("urn:other", "creator").unwrap().value,
+            "Alice"
+        );
+        assert_eq!(std::fs::read(&content_path).unwrap(), b"original");
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(&uri)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert!(!content_path.exists());
+        assert!(!xmp_path.exists());
+        assert!(matches!(
+            index.get_content(id).await,
+            Err(domain::Error::ContentNotFound)
+        ));
+        std::fs::remove_dir(directory).unwrap();
+    }
 
     #[derive(Default)]
     struct RecordingStorage {
@@ -448,6 +624,19 @@ mod tests {
             &self,
             _: domain::ContentId,
             _: domain::MediaType,
+        ) -> Result<(), domain::Error> {
+            unreachable!()
+        }
+        async fn delete_xmp_sidecar(&self, _: domain::ContentId) -> Result<(), domain::Error> {
+            unreachable!()
+        }
+        async fn get_xmp_sidecar(&self, _: domain::ContentId) -> Result<String, domain::Error> {
+            unreachable!()
+        }
+        async fn replace_xmp_sidecar(
+            &self,
+            _: domain::ContentId,
+            _: &str,
         ) -> Result<(), domain::Error> {
             unreachable!()
         }
@@ -490,6 +679,19 @@ mod tests {
         ) -> Result<(), domain::Error> {
             unreachable!()
         }
+        async fn delete_xmp_sidecar(&self, _: domain::ContentId) -> Result<(), domain::Error> {
+            unreachable!()
+        }
+        async fn get_xmp_sidecar(&self, _: domain::ContentId) -> Result<String, domain::Error> {
+            unreachable!()
+        }
+        async fn replace_xmp_sidecar(
+            &self,
+            _: domain::ContentId,
+            _: &str,
+        ) -> Result<(), domain::Error> {
+            unreachable!()
+        }
 
         async fn scan_contents(
             &self,
@@ -513,7 +715,9 @@ mod tests {
             schema,
             ListContentsUseCase::new(index.clone()),
             GetContentUseCase::new(index.clone()),
-            CreateContentUseCase::new(storage.clone(), index),
+            CreateContentUseCase::new(storage.clone(), index.clone()),
+            UpdateContentUseCase::new(storage.clone(), index.clone()),
+            DeleteContentUseCase::new(storage.clone(), index),
         );
         let body = concat!(
             "--boundary\r\nContent-Disposition: form-data; name=\"content\"; filename=\"test.avif\"\r\nContent-Type: image/avif\r\n\r\n",
@@ -562,7 +766,9 @@ mod tests {
             TagSchema::default(),
             ListContentsUseCase::new(index.clone()),
             GetContentUseCase::new(index.clone()),
-            CreateContentUseCase::new(Arc::new(UnusedStorage), index),
+            CreateContentUseCase::new(Arc::new(UnusedStorage), index.clone()),
+            UpdateContentUseCase::new(Arc::new(UnusedStorage), index.clone()),
+            DeleteContentUseCase::new(Arc::new(UnusedStorage), index),
         );
         let router = controller.router();
         let part = |name: &str, content_type: &str, body: &str| {
@@ -710,7 +916,9 @@ mod tests {
             schema,
             ListContentsUseCase::new(index.clone()),
             GetContentUseCase::new(index.clone()),
-            CreateContentUseCase::new(Arc::new(UnusedStorage), index),
+            CreateContentUseCase::new(Arc::new(UnusedStorage), index.clone()),
+            UpdateContentUseCase::new(Arc::new(UnusedStorage), index.clone()),
+            DeleteContentUseCase::new(Arc::new(UnusedStorage), index),
         );
 
         for (key, expected_status) in [
@@ -763,7 +971,9 @@ mod tests {
             schema,
             ListContentsUseCase::new(index.clone()),
             GetContentUseCase::new(index.clone()),
-            CreateContentUseCase::new(Arc::new(UnusedStorage), index),
+            CreateContentUseCase::new(Arc::new(UnusedStorage), index.clone()),
+            UpdateContentUseCase::new(Arc::new(UnusedStorage), index.clone()),
+            DeleteContentUseCase::new(Arc::new(UnusedStorage), index),
         );
 
         for (condition, expected_status, expected_count) in [

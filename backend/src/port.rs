@@ -24,9 +24,14 @@ pub(crate) trait ContentStorage: Send + Sync {
 
     /// Create only the XMP sidecar. Clean up an incomplete write on failure.
     async fn create_xmp_sidecar(&self, id: ContentId, xmp: &str) -> Result<(), Error>;
-
-    /// Remove the content file created for this id when sidecar creation fails.
+    /// Remove the content file created for this id.
     async fn delete_content_file(&self, id: ContentId, media_type: MediaType) -> Result<(), Error>;
+    /// Remove the XMP sidecar created for this id.
+    async fn delete_xmp_sidecar(&self, id: ContentId) -> Result<(), Error>;
+    /// Get the content file for this id.
+    async fn get_xmp_sidecar(&self, id: ContentId) -> Result<String, Error>;
+    /// Replace the XMP sidecar for this id.
+    async fn replace_xmp_sidecar(&self, id: ContentId, xmp: &str) -> Result<(), Error>;
 
     /// Scan content storage and return a sorted list of content in ascending order by content id.
     /// This method returns at most `limit` number of content, and a cursor to continue scanning from the last content id.
@@ -47,6 +52,7 @@ pub(crate) trait TagSchemaStorage: Send + Sync {
 pub(crate) trait MetadataIndex: Send + Sync {
     async fn add_contents(&self, contents: &[Content]) -> Result<(), Error>;
     async fn get_content(&self, id: ContentId) -> Result<Content, Error>;
+    async fn remove_content(&self, id: ContentId) -> Result<(), Error>;
     async fn list_contents(
         &self,
         limit: u64,

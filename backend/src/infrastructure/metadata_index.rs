@@ -50,6 +50,11 @@ impl MetadataIndex for InMemoryMetadataIndex {
             .cloned()
     }
 
+    async fn remove_content(&self, id: ContentId) -> Result<(), Error> {
+        self.sorted_contents.write().await.remove(&id);
+        Ok(())
+    }
+
     async fn list_contents(
         &self,
         limit: u64,

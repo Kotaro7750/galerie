@@ -38,6 +38,26 @@ pub enum CreateContentResponse {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[must_use]
 #[allow(clippy::large_enum_variant)]
+pub enum DeleteContentResponse {
+    /// コンテンツを削除した
+    Status204
+    ,
+    /// リクエストパラメーターが不正である
+    Status400
+    (models::BadRequestProblem)
+    ,
+    /// コンテンツが存在しないもしくはメタデータを取得できない
+    Status404
+    (models::ContentNotFoundProblem)
+    ,
+    /// サーバー内部で予期しないエラーが発生した
+    Status500
+    (models::InternalServerErrorProblem)
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[must_use]
+#[allow(clippy::large_enum_variant)]
 pub enum GetContentResponse {
     /// コンテンツの正常な取得
     Status200
@@ -73,6 +93,27 @@ pub enum ListContentsResponse {
     (models::InternalServerErrorProblem)
 }
 
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[must_use]
+#[allow(clippy::large_enum_variant)]
+pub enum UpdateContentResponse {
+    /// タグを更新した。返却するdiagnosticsは空配列
+    Status200
+    (models::Content)
+    ,
+    /// コンテンツID、タグ、またはタグ全体の制約が不正であり、更新しなかった
+    Status400
+    (models::BadRequestProblem)
+    ,
+    /// コンテンツが存在しないもしくはメタデータを取得できない
+    Status404
+    (models::ContentNotFoundProblem)
+    ,
+    /// サーバー内部で予期しないエラーが発生した
+    Status500
+    (models::InternalServerErrorProblem)
+}
+
 
 
 
@@ -85,19 +126,31 @@ pub trait Contents<E: std::fmt::Debug + Send + Sync + 'static = ()>: super::Erro
     /// CreateContent - POST /api/v0/contents
     async fn create_content(
     &self,
-    
+
     method: &Method,
     host: &Host,
     cookies: &CookieJar,
     body: Multipart,
     ) -> Result<CreateContentResponse, E>;
 
+    /// コンテンツの削除.
+    ///
+    /// DeleteContent - DELETE /api/v0/contents/{contentId}
+    async fn delete_content(
+    &self,
+
+    method: &Method,
+    host: &Host,
+    cookies: &CookieJar,
+      path_params: &models::DeleteContentPathParams,
+    ) -> Result<DeleteContentResponse, E>;
+
     /// コンテンツの取得.
     ///
     /// GetContent - GET /api/v0/contents/{contentId}
     async fn get_content(
     &self,
-    
+
     method: &Method,
     host: &Host,
     cookies: &CookieJar,
@@ -109,10 +162,23 @@ pub trait Contents<E: std::fmt::Debug + Send + Sync + 'static = ()>: super::Erro
     /// ListContents - GET /api/v0/contents
     async fn list_contents(
     &self,
-    
+
     method: &Method,
     host: &Host,
     cookies: &CookieJar,
       query_params: &models::ListContentsQueryParams,
     ) -> Result<ListContentsResponse, E>;
+
+    /// コンテンツのタグの更新.
+    ///
+    /// UpdateContent - PATCH /api/v0/contents/{contentId}
+    async fn update_content(
+    &self,
+
+    method: &Method,
+    host: &Host,
+    cookies: &CookieJar,
+      path_params: &models::UpdateContentPathParams,
+            body: &models::ContentMetadataInput,
+    ) -> Result<UpdateContentResponse, E>;
 }

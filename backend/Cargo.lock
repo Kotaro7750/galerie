@@ -1665,7 +1665,7 @@ dependencies = [
 
 [[package]]
 name = "galerie_api"
-version = "0.7.0"
+version = "0.6.3"
 dependencies = [
  "ammonia",
  "async-trait",

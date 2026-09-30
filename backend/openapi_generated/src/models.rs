@@ -75,6 +75,20 @@ pub fn check_xss_map<T>(v: &std::collections::HashMap<String, T>) -> std::result
 
     #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
     #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+    pub struct DeleteContentPathParams {
+                #[validate(
+                          regex(path = *RE_DELETECONTENTPATHPARAMS_CONTENT_ID),
+            )]
+                pub content_id: String,
+    }
+
+    lazy_static::lazy_static! {
+        static ref RE_DELETECONTENTPATHPARAMS_CONTENT_ID: regex::Regex = regex::Regex::new("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$").unwrap();
+    }
+
+
+    #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+    #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
     pub struct GetContentPathParams {
                 #[validate(
                           regex(path = *RE_GETCONTENTPATHPARAMS_CONTENT_ID),
@@ -108,6 +122,20 @@ pub fn check_xss_map<T>(v: &std::collections::HashMap<String, T>) -> std::result
                 #[serde(rename = "condition")]
                     #[serde(default)]
                     pub condition: Vec<models::SearchTerm>,
+    }
+
+
+    #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
+    #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+    pub struct UpdateContentPathParams {
+                #[validate(
+                          regex(path = *RE_UPDATECONTENTPATHPARAMS_CONTENT_ID),
+            )]
+                pub content_id: String,
+    }
+
+    lazy_static::lazy_static! {
+        static ref RE_UPDATECONTENTPATHPARAMS_CONTENT_ID: regex::Regex = regex::Regex::new("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$").unwrap();
     }
 
 
@@ -5300,7 +5328,7 @@ impl std::convert::TryFrom<HeaderValue> for header::IntoHeaderValue<TagMatchTerm
 
 
 
-/// コンテンツの登録・検索・診断に適用する現在有効なタグスキーマ
+/// コンテンツの登録・検索・診断に適用するタグスキーマ
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
 pub struct TagSchema {

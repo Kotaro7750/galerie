@@ -180,6 +180,30 @@ impl ContentStorage for FileSystemContentStorage {
             .map_err(|e| Error::Internal(format!("Failed to remove content file: {e}")))
     }
 
+    async fn delete_xmp_sidecar(&self, id: ContentId) -> Result<(), Error> {
+        fs::remove_file(self.xmp_file_path(id))
+            .map_err(|e| Error::Internal(format!("Failed to remove XMP file: {e}")))
+    }
+
+    async fn get_xmp_sidecar(&self, id: ContentId) -> Result<String, Error> {
+        self.extract_xmp_content(id)
+            .map_err(|e| Error::Internal(format!("Failed to read XMP file: {e}")))
+    }
+
+    async fn replace_xmp_sidecar(&self, id: ContentId, xmp: &str) -> Result<(), Error> {
+        let path = self.xmp_file_path(id);
+        // Stage a complete sidecar in the same directory, then atomically replace it.
+        let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
+        let result = (|| -> Result<(), io::Error> {
+            fs::write(&temporary, xmp)?;
+            fs::rename(&temporary, &path)
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        result.map_err(|e| Error::Internal(format!("Failed to replace XMP file: {e}")))
+    }
+
     async fn scan_contents(
         &self,
         tag_schema: &TagSchema,

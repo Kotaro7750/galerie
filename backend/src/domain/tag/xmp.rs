@@ -7,7 +7,7 @@ const TAG_NAMESPACE_URI: &str = "galerie";
 
 /// Check if the given tags can be serialized to XMP and then parsed back to the same tags without any diagnostics.
 pub(crate) fn check_xmp_roundtrip(tags: &TagSet, tag_schema: &TagSchema) -> bool {
-    let Ok(xmp) = serialize::serialize_tags_to_xmp(tags) else {
+    let Ok(xmp) = serialize::create_xmp_with_tags(tags) else {
         return false;
     };
     matches!(
@@ -63,7 +63,7 @@ mod tests {
         let tags = TagSet::new(&tags).unwrap();
 
         let (parsed, diagnostics) = parse::parse_metadata(
-            serialize::serialize_tags_to_xmp(&tags).unwrap().as_ref(),
+            serialize::create_xmp_with_tags(&tags).unwrap().as_ref(),
             &schema,
         )
         .unwrap();
@@ -92,7 +92,7 @@ mod tests {
             let tags = TagSet::new(&[tag]).unwrap();
 
             let (parsed, diagnostics) = parse::parse_metadata(
-                serialize::serialize_tags_to_xmp(&tags).unwrap().as_ref(),
+                serialize::create_xmp_with_tags(&tags).unwrap().as_ref(),
                 &schema,
             )
             .unwrap();
@@ -135,7 +135,7 @@ mod tests {
             let tags = TagSet::new(&[tag]).unwrap();
 
             let (parsed, diagnostics) = parse::parse_metadata(
-                serialize::serialize_tags_to_xmp(&tags).unwrap().as_ref(),
+                serialize::create_xmp_with_tags(&tags).unwrap().as_ref(),
                 &schema,
             )
             .unwrap();

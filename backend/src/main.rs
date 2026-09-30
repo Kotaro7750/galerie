@@ -15,7 +15,7 @@ use http::{
 use tower_http::cors::CorsLayer;
 use usecase::{
     ClearContentAccessUseCase, ConfigureContentAccessUseCase, CreateContentUseCase,
-    GetContentUseCase,
+    DeleteContentUseCase, GetContentUseCase, UpdateContentUseCase,
 };
 
 use crate::config::GalerieConfig;
@@ -72,7 +72,9 @@ async fn main() -> anyhow::Result<()> {
         tag_schema.clone(),
         ListContentsUseCase::new(metadata_index.clone()),
         GetContentUseCase::new(metadata_index.clone()),
-        CreateContentUseCase::new(content_storage, metadata_index.clone()),
+        CreateContentUseCase::new(content_storage.clone(), metadata_index.clone()),
+        UpdateContentUseCase::new(content_storage.clone(), metadata_index.clone()),
+        DeleteContentUseCase::new(content_storage, metadata_index.clone()),
     );
     let content_access_controller = ContentAccessController::new(
         ConfigureContentAccessUseCase::new(content_access_configurator.clone()),
@@ -95,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
         app.layer(
             CorsLayer::new()
                 .allow_origin(cors_origin.parse::<HeaderValue>()?)
-                .allow_methods([Method::GET, Method::POST, Method::DELETE])
+                .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
                 .allow_headers([AUTHORIZATION, CONTENT_TYPE]),
         )
     } else {

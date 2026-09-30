@@ -161,6 +161,34 @@ impl ContentStorage for S3ContentStorage {
         Ok(())
     }
 
+    async fn delete_xmp_sidecar(&self, id: ContentId) -> Result<(), Error> {
+        self.client
+            .delete_object()
+            .bucket(&self.bucket_name)
+            .key(format!("{}/{}.xmp", self.xmp_prefix, id.as_ref()))
+            .send()
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to remove XMP object: {e}")))?;
+        Ok(())
+    }
+
+    async fn get_xmp_sidecar(&self, id: ContentId) -> Result<String, Error> {
+        self.get_xmp_metadata(id).await
+    }
+
+    async fn replace_xmp_sidecar(&self, id: ContentId, xmp: &str) -> Result<(), Error> {
+        self.client
+            .put_object()
+            .bucket(&self.bucket_name)
+            .key(format!("{}/{}.xmp", self.xmp_prefix, id.as_ref()))
+            .content_type("application/rdf+xml")
+            .body(ByteStream::from(xmp.as_bytes().to_vec()))
+            .send()
+            .await
+            .map_err(|e| Error::Internal(format!("Failed to replace XMP object: {e}")))?;
+        Ok(())
+    }
+
     async fn scan_contents(
         &self,
         tag_schema: &TagSchema,
