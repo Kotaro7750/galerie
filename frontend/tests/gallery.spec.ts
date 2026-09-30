@@ -219,6 +219,35 @@ test('slideshow shares playback controls with fullscreen and restores excluded s
   await expect(page.locator(':fullscreen')).toHaveCount(1);
 });
 
+test('fullscreen slideshow controls hide when idle and return on input', async ({ page, isMobile }) => {
+  const entries = [content(0), content(1)];
+  await page.route('**/api/v0/contents?*', (route) => route.fulfill({ json: { items: entries } }));
+  await page.route('**/api/v0/contents/*', (route) => {
+    const item = entries.find(({ id: itemId }) => route.request().url().endsWith(`/${itemId}`));
+    return route.fulfill(item ? { json: item } : { status: 404 });
+  });
+  await mockImages(page);
+  await page.goto('/#/contents');
+  await page.getByRole('link', { name: '画像 1 を開く', exact: true }).click();
+  await page.getByRole('button', { name: '全画面表示', exact: true }).click();
+  const fullscreen = page.locator(':fullscreen');
+  const controls = fullscreen.getByRole('group', { name: 'スライドショー' });
+  const opacity = () => controls.evaluate((element) => getComputedStyle(element).opacity);
+  await expect.poll(opacity).toBe('1');
+  await expect.poll(opacity, { timeout: 5000 }).toBe('0');
+  if (isMobile) await page.touchscreen.tap(30, 80);
+  else await page.mouse.move(30, 80);
+  await expect.poll(opacity).toBe('1');
+  if (isMobile) return;
+  await expect.poll(opacity, { timeout: 5000 }).toBe('0');
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(opacity).toBe('1');
+  await controls.getByRole('button', { name: 'シャッフル再生' }).focus();
+  await expect(controls.locator(':focus-visible')).toHaveCount(1);
+  await page.waitForTimeout(3300);
+  await expect.poll(opacity).toBe('1');
+});
+
 test('shuffle visits each target once before repeating and keeps its setting in fullscreen', async ({ page }) => {
   const entries = [content(0), content(1), content(2), content(3)];
   await page.addInitScript(() => { Math.random = () => 0; });

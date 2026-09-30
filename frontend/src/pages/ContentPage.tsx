@@ -86,6 +86,31 @@ export function ContentPage() {
   };
   const { draft, applyTerms } = useSearchStore();
   const { imageContainer, fullscreen, fullscreenError, toggleFullscreen, supported } = useFullscreen();
+  const [fullscreenControlsVisible, setFullscreenControlsVisible] = useState(true);
+  useEffect(() => {
+    if (!fullscreen || !imageContainer.current) return;
+    const container = imageContainer.current;
+    let timer: number;
+    const revealControls = () => {
+      setFullscreenControlsVisible(true);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (!container.querySelector('[role="group"][aria-label="スライドショー"] :focus-visible')) setFullscreenControlsVisible(false);
+      }, 3000);
+    };
+    revealControls();
+    container.addEventListener('pointermove', revealControls);
+    container.addEventListener('pointerdown', revealControls);
+    container.addEventListener('focusin', revealControls);
+    document.addEventListener('keydown', revealControls);
+    return () => {
+      window.clearTimeout(timer);
+      container.removeEventListener('pointermove', revealControls);
+      container.removeEventListener('pointerdown', revealControls);
+      container.removeEventListener('focusin', revealControls);
+      document.removeEventListener('keydown', revealControls);
+    };
+  }, [fullscreen, imageContainer]);
   const fullscreenLabel = fullscreen ? '全画面表示を解除' : '全画面表示';
   const FullscreenIcon = fullscreen ? Minimize : Fullscreen;
   const query = useContent(contentId);
@@ -148,7 +173,7 @@ export function ContentPage() {
         <IconButton className="btn-ghost absolute right-4 top-1/2 z-10 min-h-11 min-w-11 -translate-y-1/2 bg-base-100/80" label="次のコンテンツ" icon={ChevronRight} onClick={() => swiperRef.current?.slideNext()} />
       </>}
       {fullscreen && <IconButton className="absolute right-4 top-4 z-20" label={fullscreenLabel} icon={FullscreenIcon} onClick={() => { void toggleFullscreen(); }} />}
-      {fullscreen && canSwipe && <SlideshowControls {...slideshowControls} className="absolute bottom-4 left-1/2 z-20 max-w-[calc(100%-2rem)] -translate-x-1/2" />}
+      {fullscreen && canSwipe && <SlideshowControls {...slideshowControls} className={`absolute bottom-4 left-1/2 z-20 max-w-[calc(100%-2rem)] -translate-x-1/2 transition-[opacity,translate] duration-300 ${fullscreenControlsVisible ? 'opacity-100' : 'pointer-events-none translate-y-4 opacity-0'}`} />}
       {fullscreenError && <p className="alert alert-error absolute bottom-4 left-4 right-4" role="alert">{fullscreenError}</p>}
     </div>}
     {confirmDelete && query.data && <DeleteContentsDialog items={[query.data]} onClose={() => setConfirmDelete(false)} onDeleted={() => navigate('/contents', { replace: true })} />}
