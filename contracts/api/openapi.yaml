@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Galerie API
-  version: 0.6.2
+  version: 0.6.3
   license:
     name: MIT License
     identifier: MIT
@@ -354,6 +354,64 @@ paths:
                     definition:
                       key: title
                       type: text
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/ContentNotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    patch:
+      operationId: updateContent
+      tags:
+        - Contents
+      summary: コンテンツのタグの更新
+      description: |
+        指定したコンテンツのタグを更新する。コンテンツファイルは変更しない。
+        指定したタグの配列で既存のタグ全体を置き換える。空配列を指定した場合はすべてのタグを削除する。
+        いずれかのタグまたはタグ全体の制約が不正な場合はエラーを返し、既存のタグは変更しない。
+      parameters:
+        - $ref: "#/components/parameters/ContentId"
+      requestBody:
+        description: 更新後のタグ全体
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContentMetadataInput"
+            example:
+              tags:
+                - key: category
+                  type: text
+                  value: landscape
+      responses:
+        "200":
+          description: タグを更新した。返却するdiagnosticsは空配列
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Content"
+        "400":
+          description: コンテンツID、タグ、またはタグ全体の制約が不正であり、更新しなかった
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/BadRequestProblem"
+        "404":
+          $ref: "#/components/responses/ContentNotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    delete:
+      operationId: deleteContent
+      tags:
+        - Contents
+      summary: コンテンツの削除
+      description: |
+        指定したコンテンツのコンテンツファイルとXMPサイドカーを削除する。
+      parameters:
+        - $ref: "#/components/parameters/ContentId"
+      responses:
+        "204":
+          description: コンテンツを削除した
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
