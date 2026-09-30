@@ -211,6 +211,29 @@ test('filters grouped key suggestions and accepts a new key directly', async ({ 
   await expect(page.getByLabel('other: free')).toHaveCount(0);
 });
 
+test('tag actions do not leave gaps between badges until hover', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'touch controls remain visible');
+  await page.goto('/#/contents/new');
+  for (const key of ['firstTag', 'secondTag']) {
+    await enterAdditionalTagKey(page, key);
+    await page.getByRole('button', { name: 'タグを追加' }).click();
+  }
+  const tags = page.getByRole('list', { name: '登録するタグ' }).getByRole('listitem');
+  const first = tags.nth(0);
+  const second = tags.nth(1);
+  const firstBounds = await first.boundingBox();
+  const badgeBounds = await first.getByLabel('firstTag', { exact: true }).boundingBox();
+  const secondBefore = await second.boundingBox();
+  expect(firstBounds && badgeBounds && secondBefore).toBeTruthy();
+  expect(firstBounds!.width).toBeCloseTo(badgeBounds!.width, 0);
+  expect(secondBefore!.x - firstBounds!.x - firstBounds!.width).toBeCloseTo(12, 0);
+  await first.getByLabel('firstTag', { exact: true }).hover();
+  await expect(first.getByRole('button', { name: 'firstTag を編集' }).locator('..')).toHaveCSS('opacity', '1');
+  expect((await second.boundingBox())!.x).toBe(secondBefore!.x);
+  await first.getByRole('button', { name: 'firstTag を編集' }).click();
+  await expect(page.getByLabel('タグ名', { exact: true })).toHaveValue('firstTag');
+});
+
 test('fetches a URL into the local preview and keeps API requests pending', async ({ page }) => {
   let posts = 0;
   await page.route('**/api/v0/contents', (route) => { posts++; return route.abort(); });
@@ -361,6 +384,7 @@ test('carousel buttons wrap at both ends and show the current position', async (
   expect(previousBounds!.y).toBeGreaterThan(imageBounds!.y);
   expect(nextBounds!.y + nextBounds!.height).toBeLessThan(imageBounds!.y + imageBounds!.height);
   await page.getByRole('button', { name: '前の画像' }).click();
+  expect(parseFloat(await page.locator('.swiper-wrapper').evaluate((element) => element.style.transitionDuration))).toBeGreaterThan(0);
   await expect(page.locator('.swiper-slide-active').getByRole('button', { name: '2 件目のコンテンツを削除' })).toBeVisible();
   await expect(position).toHaveText('2 / 2');
   await page.getByRole('button', { name: '次の画像' }).click();

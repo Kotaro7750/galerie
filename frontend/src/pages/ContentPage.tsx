@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { IconAnchor, IconButton, IconLink } from '../components/IconAction';
-import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Fullscreen, Minimize } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Fullscreen, Minimize, Pencil, Trash2 } from 'lucide-react';
 import type { Swiper as SwiperInstance } from 'swiper';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import 'swiper/css';
@@ -17,6 +17,7 @@ import { useSearchStore } from '../store';
 import { useTagSchema } from '../hooks/useTagSchema';
 import type { ContentNavigationItem } from '../contentNavigation';
 import { tagSearchTerm } from '../tagSearchTerm';
+import { DeleteContentsDialog } from '../components/DeleteContentsDialog';
 
 export function ContentPage() {
   const { contentId = '' } = useParams();
@@ -90,13 +91,14 @@ export function ContentPage() {
   const query = useContent(contentId);
   const schema = useTagSchema().data;
   const [imageResolutions, setImageResolutions] = useState<Record<string, ImageResolutionValue>>({});
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const updateResolution = (src: string, value?: ImageResolutionValue) => setImageResolutions((current) => {
     if (value) return { ...current, [src]: value };
     const next = { ...current };
     delete next[src];
     return next;
   });
-  return <section className="space-y-4">
+  return <section className="space-y-4 overflow-x-clip">
     {canSwipe && !fullscreen && <SlideshowControls {...slideshowControls} className="ml-auto w-fit max-w-full" />}
     <div className="flex items-center gap-3">
       <IconLink to="/contents" label="ギャラリーに戻る" icon={ArrowLeft} />
@@ -106,16 +108,20 @@ export function ContentPage() {
         <div className="flex items-center gap-1">
           <IconButton disabled={!supported} label={fullscreenLabel} icon={FullscreenIcon} onClick={() => { void toggleFullscreen(); }} />
           <IconAnchor href={query.data.contentUrl} target="_blank" rel="noreferrer" label="元の画像を開く" icon={ExternalLink} />
+          <IconButton className="btn-ghost text-error hover:bg-error hover:text-error-content" label="コンテンツを削除" icon={Trash2} onClick={() => { setPlaying(false); setConfirmDelete(true); }} />
         </div>
       </div>}
     </div>
     {query.isPending && <Loading />}
     {query.isError && <ErrorMessage error={query.error} onRetry={() => { void query.refetch(); }} />}
     {query.data && <>
-      <section aria-label="タグ情報"><ContentTags tags={query.data.tags} diagnostics={query.data.diagnostics} schema={schema} onTagClick={(tag) => {
-        applyTerms([...draft, tagSearchTerm(tag)]);
-        navigate('/contents');
-      }} /></section>
+      <section aria-label="タグ情報" className="flex items-start gap-2">
+        <div className="min-w-0 flex-1 pt-1.5"><ContentTags tags={query.data.tags} diagnostics={query.data.diagnostics} schema={schema} onTagClick={(tag) => {
+          applyTerms([...draft, tagSearchTerm(tag)]);
+          navigate('/contents');
+        }} /></div>
+        <IconLink className="btn-ghost shrink-0" to={`/contents/${contentId}/edit`} label="タグを編集" icon={Pencil} />
+      </section>
     </>}
     {(query.data || canSwipe) && <div ref={imageContainer} className="relative flex min-w-0 items-center justify-center rounded-box bg-base-200 p-4 [&:fullscreen]:rounded-none [&:fullscreen]:p-0">
       {canSwipe ? <Swiper className="h-full w-full [&_.swiper-slide]:!flex [&_.swiper-slide]:items-center [&_.swiper-slide]:justify-center"
@@ -145,5 +151,6 @@ export function ContentPage() {
       {fullscreen && canSwipe && <SlideshowControls {...slideshowControls} className="absolute bottom-4 left-1/2 z-20 max-w-[calc(100%-2rem)] -translate-x-1/2" />}
       {fullscreenError && <p className="alert alert-error absolute bottom-4 left-4 right-4" role="alert">{fullscreenError}</p>}
     </div>}
+    {confirmDelete && query.data && <DeleteContentsDialog items={[query.data]} onClose={() => setConfirmDelete(false)} onDeleted={() => navigate('/contents', { replace: true })} />}
   </section>;
 }

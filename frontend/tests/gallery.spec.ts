@@ -66,7 +66,7 @@ test('home introduces the gallery without fetching content', async ({ page }) =>
   expect(createBounds!.x).toBeGreaterThan(galleryBounds!.x + galleryBounds!.width);
   expect(createBounds!.y).toBeCloseTo(galleryBounds!.y, 0);
   await expect(page.locator('.divider')).toHaveText('OR');
-  expect(requestedPaths).toEqual(['/api/v0/content-access']);
+  expect(requestedPaths).toEqual(['/api/v0/content-access', '/api/v0/tag-schema']);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/home-${test.info().project.name}.png`, fullPage: true });
 });
@@ -332,7 +332,7 @@ test('empty, loading and request failure states offer recovery', async ({ page }
       : { json: { items: [] } });
   });
   await page.goto('/#/contents');
-  await expect(page.getByRole('status')).toContainText('読み込み中');
+  await expect(page.getByRole('status').getByText('読み込み中…', { exact: true })).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('カーソルが無効です。');
   failing = false;
   await page.getByRole('button', { name: '再試行', exact: true }).click();

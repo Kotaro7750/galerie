@@ -1,55 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, FileUp, HardDrive, Link, Eye, Pencil, Plus, Save, Tags, Trash2, Upload, X } from 'lucide-react';
-import type { Swiper as SwiperInstance } from 'swiper';
-import { Swiper, SwiperSlide } from 'swiper/react';
-import 'swiper/css';
+import { useEffect, useRef, useState } from 'react';
+import { FileUp, Link, Eye, Plus, Save, Upload, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { MediaType, type Tag } from '../api/generated';
 import { ApiError, apiRequest, contentsApi } from '../api/client';
 import { Loading } from '../components/Feedback';
 import { IconButton } from '../components/IconAction';
-import { TagBadge } from '../components/TagBadge';
-import { TermEditor } from '../components/TermEditor';
+import { ContentTagEditor } from '../components/ContentTagEditor';
+import { ContentPreviewCarousel } from '../components/ContentPreviewCarousel';
 import { MediaTypeIcon } from '../components/MediaTypeIcon';
-import { ImageResolution, type ImageResolutionValue } from '../components/ImageResolution';
 import { convertToAvif } from '../image/convert';
 import { useTagSchema } from '../hooks/useTagSchema';
 import { registrationErrors } from '../tagSchema';
 
 const maxFileSize = 100 * 1024 * 1024;
 type Draft = { id: number; file: File };
-
-function DraftPreview({ file, index, total, active, busy, onDelete, onPrevious, onNext, onLayoutChange }: { file: File; index: number; total: number; active: boolean; busy: boolean; onDelete: () => void; onPrevious: () => void; onNext: () => void; onLayoutChange: () => void }) {
-  const [previewUrl, setPreviewUrl] = useState<string>();
-  const [resolution, setResolution] = useState<ImageResolutionValue>();
-  useEffect(() => {
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
-  useEffect(() => {
-    const frame = requestAnimationFrame(onLayoutChange);
-    return () => cancelAnimationFrame(frame);
-  }, [previewUrl, resolution, onLayoutChange]);
-  return previewUrl && <figure className="flex w-fit max-w-full flex-col items-center gap-2">
-    <figcaption className="flex w-full items-center justify-between gap-2 text-sm">
-      <span aria-label={active ? '表示中の画像' : undefined}>{index + 1} / {total}</span>
-      <span className="flex items-center justify-end gap-2 sm:gap-4">
-        <span className="tooltip inline-flex items-center gap-1" data-tip="ファイルサイズ"><HardDrive role="img" aria-label="ファイルサイズ" className="size-5 shrink-0" strokeWidth={1.75} /><span>{(file.size / 1024 / 1024).toFixed(2)} MiB</span></span>
-        <ImageResolution resolution={resolution} />
-      </span>
-    </figcaption>
-    <div className="relative max-w-full">
-      <img src={previewUrl} alt="登録するコンテンツのプレビュー" className="block max-h-[60vh] max-w-full rounded-lg object-contain" onLoad={(event) => setResolution({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} onError={() => setResolution(undefined)} />
-      <IconButton icon={X} label={`${index + 1} 件目のコンテンツを削除`} className="btn-circle btn-error btn-sm absolute top-2 right-2 z-10 shadow-md" disabled={busy} onClick={onDelete} />
-      {active && total > 1 && <>
-        <IconButton icon={ChevronLeft} label="前の画像" className="btn-ghost absolute left-2 top-1/2 z-10 min-h-11 min-w-11 -translate-y-1/2 bg-base-100/80" onClick={onPrevious} />
-        <IconButton icon={ChevronRight} label="次の画像" className="btn-ghost absolute right-2 top-1/2 z-10 min-h-11 min-w-11 -translate-y-1/2 bg-base-100/80" onClick={onNext} />
-      </>}
-    </div>
-  </figure>;
-}
 
 async function prepareImage(file: Blob, name: string, signal: AbortSignal): Promise<File> {
   if (!file.size || file.size > maxFileSize) throw new Error('100 MiB 以下の画像を選択してください。');
@@ -81,10 +46,7 @@ export function CreateContentPage() {
   const [mediaType, setMediaType] = useState<MediaType>(MediaType.ImageAvif);
   const [sourceMode, setSourceMode] = useState<'file' | 'url'>('file');
   const [drafts, setDrafts] = useState<Draft[]>([]);
-  const [activeIndex, setActiveIndex] = useState(0);
   const nextDraftId = useRef(0);
-  const swiper = useRef<SwiperInstance | null>(null);
-  const updateCarouselHeight = useCallback(() => swiper.current?.updateAutoHeight(0), []);
   const [sourceUrl, setSourceUrl] = useState('');
   const [sourceError, setSourceError] = useState('');
   const [preparing, setPreparing] = useState(false);
@@ -92,7 +54,7 @@ export function CreateContentPage() {
   const [progress, setProgress] = useState<{ done: number; total: number }>();
   const [failures, setFailures] = useState<Record<number, string>>({});
   const [tags, setTags] = useState<Tag[]>([]);
-  const [tagToEdit, setTagToEdit] = useState<Tag>();
+  const [editingTag, setEditingTag] = useState(false);
   const request = useRef<AbortController>();
   const selection = useRef(0);
   const navigate = useNavigate();
@@ -193,7 +155,7 @@ export function CreateContentPage() {
     return () => document.removeEventListener('paste', pasteImage);
   });
   async function register() {
-    if (busy || !drafts.length || !schemaQuery.data || tagErrors.length || tagToEdit) return;
+    if (busy || !drafts.length || !schemaQuery.data || tagErrors.length || editingTag) return;
     const pending = [...drafts];
     const submittedTags = [...tags];
     setBusy(true);
@@ -246,28 +208,12 @@ export function CreateContentPage() {
       {preparing && <Loading label="コンテンツを準備中…" />}
       {sourceError && <p role="alert" className="text-error">{sourceError}</p>}
       {drafts.length > 0 && <div aria-label="登録するコンテンツ一覧" className="relative min-w-0">
-        <Swiper key={drafts.map((draft) => draft.id).join('-')} autoHeight loop={drafts.length > 1} initialSlide={Math.min(activeIndex, drafts.length - 1)} onRealIndexChange={(instance) => setActiveIndex(instance.realIndex)} onSwiper={(instance) => { swiper.current = instance; }} onBeforeDestroy={(instance) => { if (swiper.current === instance) swiper.current = null; }} className="w-full">
-          {drafts.map((draft, index) => <SwiperSlide key={draft.id} className="relative flex! flex-col items-center px-2 sm:px-12">
-            <DraftPreview file={draft.file} index={index} total={drafts.length} active={index === Math.min(activeIndex, drafts.length - 1)} busy={busy} onLayoutChange={updateCarouselHeight} onPrevious={() => swiper.current?.slideToLoop((swiper.current.realIndex - 1 + drafts.length) % drafts.length, 0)} onNext={() => swiper.current?.slideToLoop((swiper.current.realIndex + 1) % drafts.length, 0)} onDelete={() => { setDrafts((current) => current.filter((item) => item.id !== draft.id)); setFailures((current) => { const remaining = { ...current }; delete remaining[draft.id]; return remaining; }); }} />
-          </SwiperSlide>)}
-        </Swiper>
+        <ContentPreviewCarousel label="登録するコンテンツのプレビュー" items={drafts.map((draft, index) => ({ id: draft.id, image: draft.file, alt: '登録するコンテンツのプレビュー', removeLabel: `${index + 1} 件目のコンテンツを削除` }))} busy={busy} onRemove={(id) => { setDrafts((current) => current.filter((item) => item.id !== id)); setFailures((current) => { const remaining = { ...current }; delete remaining[Number(id)]; return remaining; }); }} />
       </div>}
     </div></section>
-    <section className="card bg-base-200" aria-label="登録するタグ"><div className="card-body gap-4">
-      <h2 className="card-title"><Tags className="size-5" aria-hidden="true" />タグ</h2>
-      {schemaQuery.data ? <TermEditor schema={schemaQuery.data} onAddTag={(tag) => { setTags([...tags, tag]); setTagToEdit(undefined); }} tagToEdit={tagToEdit} existingKeys={tags.map((tag) => tag.key)} />
-        : <p role="status">{schemaQuery.isError ? 'タグスキーマを取得できませんでした。再読み込みしてお試しください。' : 'タグスキーマを読み込み中…'}</p>}
-      {tagErrors.length > 0 && <ul className="text-sm text-error" aria-label="タグスキーマの確認結果">{tagErrors.map((error) => <li key={error}>{error}</li>)}</ul>}
-      {tags.length > 0 && <ul className="flex flex-wrap gap-3" aria-label="登録するタグ一覧">{tags.map((tag, index) => <li key={`${tag.key}-${index}`} className="group/tag-item relative inline-flex max-w-full items-center [@media(hover:none)]:flex-wrap">
-        <TagBadge tag={tag} schema={schemaQuery.data} />
-        <span className="pointer-events-none absolute start-full top-1/2 z-10 flex -translate-y-1/2 opacity-0 group-hover/tag-item:pointer-events-auto group-hover/tag-item:opacity-100 group-focus-within/tag-item:pointer-events-auto group-focus-within/tag-item:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:static [@media(hover:none)]:translate-y-0 [@media(hover:none)]:opacity-100">
-          <IconButton className="btn-xs rounded-full [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11" icon={Pencil} label={`${tag.key} を編集`} disabled={busy} onClick={() => { setTags(tags.filter((item) => item !== tag)); setTagToEdit(tag); }} />
-          <IconButton className="btn-xs rounded-full [@media(hover:none)]:min-h-11 [@media(hover:none)]:min-w-11" icon={Trash2} label={`${tag.key} を削除`} disabled={busy} onClick={() => setTags(tags.filter((item) => item !== tag))} />
-        </span>
-      </li>)}</ul>}
-    </div></section>
+    <ContentTagEditor tags={tags} onChange={setTags} schema={schemaQuery.data} schemaError={schemaQuery.isError} busy={busy} label="登録するタグ" onEditingChange={setEditingTag} />
     {Object.keys(failures).length > 0 && <div role="alert" className="alert alert-error my-4 break-words"><ul>{drafts.filter((draft) => failures[draft.id]).map((draft) => <li key={draft.id}>{Object.keys(failures).length > 1 ? `${draft.file.name}: ` : ''}{failures[draft.id]}</li>)}</ul></div>}
     {progress && busy && <div role="status" className="flex items-center gap-3"><progress className="progress progress-primary flex-1" value={progress.done} max={progress.total} /><span>{progress.done} / {progress.total}</span></div>}
-    <button className="btn btn-primary w-full" disabled={!drafts.length || busy || preparing || Boolean(tagToEdit) || !schemaQuery.data || tagErrors.length > 0} onClick={() => void register()}><Save className="size-5" aria-hidden="true" />{busy ? '登録中…' : '登録する'}</button>
+    <button className="btn btn-primary w-full" disabled={!drafts.length || busy || preparing || editingTag || !schemaQuery.data || tagErrors.length > 0} onClick={() => void register()}><Save className="size-5" aria-hidden="true" />{busy ? '登録中…' : '登録する'}</button>
   </section>;
 }
