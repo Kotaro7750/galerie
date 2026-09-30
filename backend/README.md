@@ -8,6 +8,7 @@ The container image defines the following environment variables.
 | --- | --- | --- | --- |
 | `GALERIE_LISTEN_ADDRESS` | Yes | `0.0.0.0` | Address on which the API server listens. |
 | `GALERIE_LISTEN_PORT` | Yes | `3000` | Port on which the API server listens. |
+| `GALERIE_SCAN_BATCH_SIZE` | Yes | `100` | Maximum number of contents read per batch during the startup scan. Must be a positive integer. |
 
 ## Cross-Origin Resource Sharing
 

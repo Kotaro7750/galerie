@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::net::IpAddr;
+use std::{net::IpAddr, num::NonZeroU64};
 use thiserror::Error;
 
 use authorization::AuthorizationConfig;
@@ -38,6 +38,8 @@ pub(crate) struct GalerieConfig {
     listen_port: u16,
     #[serde(default = "GalerieConfig::default_listen_address")]
     listen_address: String,
+    #[serde(default = "GalerieConfig::default_scan_batch_size")]
+    scan_batch_size: NonZeroU64,
     #[serde(default)]
     content_access: ContentAccessConfig,
     #[serde(default)]
@@ -55,6 +57,10 @@ impl GalerieConfig {
 
     fn default_listen_address() -> String {
         "0.0.0.0".to_string()
+    }
+
+    fn default_scan_batch_size() -> NonZeroU64 {
+        NonZeroU64::new(100).unwrap()
     }
 
     pub(crate) fn content_storage(&self) -> &ContentStorageConfig {
@@ -93,5 +99,9 @@ impl GalerieConfig {
 
     pub(crate) fn listen_address(&self) -> String {
         format!("{}:{}", self.listen_address, self.listen_port)
+    }
+
+    pub(crate) fn scan_batch_size(&self) -> NonZeroU64 {
+        self.scan_batch_size
     }
 }

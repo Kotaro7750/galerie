@@ -1,5 +1,4 @@
 use std::net::SocketAddr;
-use std::num::NonZeroU64;
 use std::sync::Arc;
 use tokio::signal;
 
@@ -60,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Scanning contents...");
     let mut cursor = None;
-    let batch_size = NonZeroU64::new(100).unwrap();
+    let batch_size = config.scan_batch_size();
     loop {
         let (contents, next_cursor) = content_storage
             .scan_contents(&tag_schema, batch_size, cursor)
