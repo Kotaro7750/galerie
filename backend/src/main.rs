@@ -34,6 +34,7 @@ mod usecase;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     observability::init_logging();
+    tracing::info!("Starting Galerie server...");
 
     let config = Config::builder()
         .add_source(
@@ -45,17 +46,32 @@ async fn main() -> anyhow::Result<()> {
         .try_deserialize::<GalerieConfig>()?;
 
     config.validate().await?;
+    tracing::info!("Configuration loaded and validated successfully.");
+
     let tag_schema_storage = config.tag_schema().construct_schema_storage().await?;
+    tracing::debug!("Tag schema constructed successfully.");
     let tag_schema = tag_schema_storage.get_tag_schema().await?;
+    tracing::info!("Tag schema loaded successfully.");
 
     let content_storage = config.content_storage().construct_content_storage().await?;
+    tracing::debug!("Content storage constructed successfully.");
     let metadata_index = InMemoryMetadataIndex::new();
+    tracing::debug!("Metadata index constructed successfully.");
 
+    tracing::info!("Scanning contents...");
     let mut cursor = None;
+    let batch_size = NonZeroU64::new(100).unwrap();
     loop {
         let (contents, next_cursor) = content_storage
-            .scan_contents(&tag_schema, NonZeroU64::new(100).unwrap(), cursor)
+            .scan_contents(&tag_schema, batch_size, cursor)
             .await?;
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            for content in &contents {
+                tracing::debug!("Scanned content: id:  {}", content.id().as_ref());
+            }
+        }
+        tracing::info!("Scanned {} contents.", contents.len());
+
         metadata_index.add_contents(&contents).await?;
         cursor = next_cursor;
 
@@ -63,6 +79,8 @@ async fn main() -> anyhow::Result<()> {
             break;
         }
     }
+    tracing::info!("Finished scanning contents.");
+
     let metadata_index = Arc::new(metadata_index);
     let content_access_configurator = config
         .content_access()
