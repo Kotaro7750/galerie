@@ -30,7 +30,7 @@ export function TagKeyInput({ value, options, allowAdditionalTags, schema, onCha
     setActiveIndex(-1);
   }
 
-  return <div className="relative min-w-0 flex-1" onBlur={(event) => {
+  return <div className="relative min-w-0 w-full sm:w-auto sm:flex-1" onBlur={(event) => {
     if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
   }}>
     <label className="input w-full"><span className="label"><Hash className={`size-4 ${style.icon}`} aria-hidden="true" /></span>

@@ -57,7 +57,8 @@ test('replaces all tags on a single item', async ({ page, isMobile }) => {
   await page.getByRole('link', { name: 'タグを編集' }).click();
   await expect(page.getByRole('img', { name: '1 件目のサムネイル' })).toBeVisible();
   await expect(page.getByRole('note')).toContainText('Invalid-Key: タグ名が無効です');
-  if (!isMobile) await page.getByLabel('category: old').hover();
+  if (isMobile) await page.getByLabel('category: old').tap();
+  else await page.getByLabel('category: old').hover();
   await page.getByRole('button', { name: 'category を削除' }).click();
   await page.getByLabel('タグ名', { exact: true }).fill('category');
   await page.getByLabel('値 1', { exact: true }).fill('new');
@@ -95,7 +96,8 @@ test('bulk edit starts with identical tags and preserves each item’s other tag
   await expect(page.getByLabel('category: shared')).toBeVisible();
   await expect(page.getByRole('note')).toContainText('Invalid-Key: タグ名が無効です');
   await expect(page.getByRole('note')).toContainText('broken: タグの値がスキーマの制約を満たしていません');
-  if (!isMobile) await page.getByLabel('category: shared').hover();
+  if (isMobile) await page.getByLabel('category: shared').tap();
+  else await page.getByLabel('category: shared').hover();
   await page.getByRole('button', { name: 'category を削除' }).click();
   await page.getByLabel('タグ名', { exact: true }).fill('subject');
   await page.getByLabel('タグの型').selectOption('text');

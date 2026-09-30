@@ -323,7 +323,8 @@ test('two loaded contents also wrap in both directions', async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`/contents/${entries[0].id}$`));
 });
 
-test('empty, loading and request failure states offer recovery', async ({ page }) => {
+test('empty, loading and request failure states offer recovery', async ({ page, isMobile }) => {
+  if (isMobile) await page.setViewportSize({ width: 375, height: 667 });
   let failing = true;
   await page.route('**/api/v0/contents?*', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -334,8 +335,13 @@ test('empty, loading and request failure states offer recovery', async ({ page }
   await page.goto('/#/contents');
   await expect(page.getByRole('status').getByText('読み込み中…', { exact: true })).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('カーソルが無効です。');
+  const retry = page.getByRole('button', { name: '再試行', exact: true });
+  await expect(retry.locator('svg')).toHaveClass(/lucide-refresh-cw/);
+  await expect(retry).toHaveText('');
+  const retryBounds = await retry.boundingBox();
+  expect(retryBounds!.x + retryBounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   failing = false;
-  await page.getByRole('button', { name: '再試行', exact: true }).click();
+  await retry.click();
   await expect(page.getByText('コンテンツが見つかりません')).toBeVisible();
 });
 

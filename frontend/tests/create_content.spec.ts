@@ -147,7 +147,8 @@ test('blocks registration until required and defined tags satisfy the schema', a
   await expect.poll(() => posts).toBe(1);
 });
 
-test('filters grouped key suggestions and accepts a new key directly', async ({ page }) => {
+test('filters grouped key suggestions and accepts a new key directly', async ({ page, isMobile }) => {
+  if (isMobile) await page.setViewportSize({ width: 375, height: 667 });
   await mockTagSchema(page, {
     version: '0', allowAdditionalTags: true,
     required: [{ key: 'subjects', type: 'textSet' }],
@@ -160,7 +161,8 @@ test('filters grouped key suggestions and accepts a new key directly', async ({ 
   const keyBounds = await key.boundingBox();
   expect(typeBounds).not.toBeNull();
   expect(keyBounds).not.toBeNull();
-  expect(keyBounds!.x + keyBounds!.width).toBeLessThan(typeBounds!.x);
+  if (isMobile) expect(keyBounds!.y + keyBounds!.height).toBeLessThan(typeBounds!.y);
+  else expect(keyBounds!.x + keyBounds!.width).toBeLessThan(typeBounds!.x);
   await expect(page.getByLabel('タグの型').locator('..').locator('svg')).toHaveClass(/lucide-list-filter/);
   await expect(page.getByText('タグの型', { exact: true })).toHaveCount(0);
   await key.fill('subjects');
@@ -174,6 +176,11 @@ test('filters grouped key suggestions and accepts a new key directly', async ({ 
   await key.fill('');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await key.focus();
+  if (isMobile) {
+    const suggestions = await page.getByRole('listbox', { name: 'タグ名の候補' }).boundingBox();
+    expect(suggestions!.width).toBeGreaterThan(200);
+    expect(suggestions!.x + suggestions!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  }
   await expect(page.getByRole('group', { name: 'Required' }).getByRole('option', { name: 'subjects' })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Optional' }).getByRole('option', { name: 'category' })).toBeVisible();
   await enterAdditionalTagKey(page, 'other');
@@ -195,7 +202,10 @@ test('filters grouped key suggestions and accepts a new key directly', async ({ 
   await expect(page.getByLabel('other: free')).toBeVisible();
   await expect(page.getByLabel('other: free').locator('.badge')).toHaveClass(/badge-accent/);
   const actions = page.getByRole('button', { name: 'other を編集' }).locator('..');
-  if (test.info().project.name === 'desktop') {
+  if (isMobile) {
+    await expect(actions).toHaveCSS('opacity', '0');
+    await page.getByLabel('other: free').tap();
+  } else {
     await page.getByRole('heading', { name: 'タグ', exact: true }).hover();
     await expect(actions).toHaveCSS('opacity', '0');
     await page.getByLabel('other: free').focus();
@@ -206,7 +216,8 @@ test('filters grouped key suggestions and accepts a new key directly', async ({ 
   await expect(key).toHaveValue('other');
   await expect(page.getByLabel('値 1', { exact: true })).toHaveValue('free');
   await page.getByRole('button', { name: 'タグを追加' }).click();
-  if (test.info().project.name === 'desktop') await page.getByLabel('other: free').hover();
+  if (isMobile) await page.getByLabel('other: free').tap();
+  else await page.getByLabel('other: free').hover();
   await page.getByRole('button', { name: 'other を削除' }).click();
   await expect(page.getByLabel('other: free')).toHaveCount(0);
 });

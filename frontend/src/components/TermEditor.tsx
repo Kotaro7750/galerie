@@ -108,7 +108,7 @@ export function TermEditor({ onAdd, termToEdit, onAddTag, tagToEdit, existingKey
   }
   const isSet = effectiveType.endsWith('Set');
   return <form className="space-y-3" aria-label={registering ? 'タグエディタ' : 'Termエディタ'} noValidate onSubmit={(event) => { event.preventDefault(); add(); }}>
-    <div className="flex items-start gap-2">
+    <div className="flex flex-wrap items-start gap-2">
       <TagKeyInput value={key} options={keyOptions} allowAdditionalTags={schema.allowAdditionalTags} schema={schema} onChange={changeKey} />
       {registering && !definition && <label className="select w-44 shrink-0"><span className="label"><ListFilter className="size-4" aria-hidden="true" /></span><select aria-label="タグの型" value={type} onChange={(event) => { const next = event.target.value as TagType; setType(next); setValues(next === 'keyOnly' ? [] : values.length ? (next.endsWith('Set') ? values : values.slice(0, 1)) : ['']); setError(''); }}>{tagTypes.filter((item) => ['keyOnly', 'text', 'textSet'].includes(item.value)).map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select></label>}
       {!registering && definition?.type !== 'keyOnly' && <IconButton className="btn-ghost rounded-full" icon={Plus} label="値を追加" onClick={() => setValues([...values, ''])} />}
