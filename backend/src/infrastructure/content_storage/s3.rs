@@ -209,8 +209,16 @@ impl ContentStorage for S3ContentStorage {
 
         let (xmp_stream, content_stream) = if let Some(cursor) = cursor {
             (
-                xmp_stream.start_after(cursor.as_ref().to_string()),
-                content_stream.start_after(cursor.as_ref().to_string()),
+                xmp_stream.start_after(format!(
+                    "{}/{}",
+                    &self.xmp_prefix,
+                    cursor.as_ref().to_string()
+                )),
+                content_stream.start_after(format!(
+                    "{}/{}",
+                    &self.content_prefix,
+                    cursor.as_ref().to_string(),
+                )),
             )
         } else {
             (xmp_stream, content_stream)
@@ -228,6 +236,7 @@ impl ContentStorage for S3ContentStorage {
         let mut contents = Vec::<Content>::with_capacity(limit.get() as usize + 1);
 
         while let (Some(xmp), Some(content)) = (&xmp_object, &content_object) {
+            tracing::warn!("xmp: {:?}, content: {:?}", xmp.key(), content.key());
             let Some(xmp_content_id) = xmp
                 .key()
                 .and_then(|key| extract_xmp_content_id(&self.xmp_prefix, key))
@@ -298,8 +307,7 @@ impl ContentStorage for S3ContentStorage {
 
         // This + 1 is intentional. See above
         let next_cursor = if contents.len() as u64 >= (limit.get() + 1) {
-            contents.pop();
-            contents.last().map(|content| content.id())
+            contents.pop().map(|content| content.id())
         } else {
             None
         };
@@ -637,5 +645,83 @@ mod tests {
         assert_eq!(list_xmp.num_calls(), 2);
         assert_eq!(list_contents.num_calls(), 2);
         assert_eq!(get_xmp.num_calls(), 3);
+    }
+
+    #[tokio::test]
+    async fn scan_contents_resumes_after_the_returned_cursor() {
+        const IDS: [&str; 3] = [
+            "11111111-1111-4111-8111-111111111111",
+            "22222222-2222-4222-8222-222222222222",
+            "33333333-3333-4333-8333-333333333333",
+        ];
+
+        let list_xmp = mock!(Client::list_objects_v2)
+            .match_requests(|request| {
+                request.bucket() == Some(BUCKET) && request.prefix() == Some(XMP_PREFIX)
+            })
+            .then_compute_output(|request| {
+                let mut output = ListObjectsV2Output::builder().is_truncated(false);
+                for id in IDS {
+                    let key = format!("{XMP_PREFIX}/{id}.xmp");
+                    if request
+                        .start_after()
+                        .is_none_or(|cursor| key.as_str() > cursor)
+                    {
+                        output = output.contents(object(&key));
+                    }
+                }
+                output.build()
+            });
+        let list_contents = mock!(Client::list_objects_v2)
+            .match_requests(|request| {
+                request.bucket() == Some(BUCKET) && request.prefix() == Some(CONTENT_PREFIX)
+            })
+            .then_compute_output(|request| {
+                let mut output = ListObjectsV2Output::builder().is_truncated(false);
+                for id in IDS {
+                    let key = format!("{CONTENT_PREFIX}/{id}.avif");
+                    if request
+                        .start_after()
+                        .is_none_or(|cursor| key.as_str() > cursor)
+                    {
+                        output = output.contents(object(&key));
+                    }
+                }
+                output.build()
+            });
+        let get_xmp = mock!(Client::get_object)
+            .match_requests(|request| {
+                request.bucket() == Some(BUCKET)
+                    && IDS
+                        .iter()
+                        .any(|id| request.key() == Some(format!("{XMP_PREFIX}/{id}.xmp").as_str()))
+            })
+            .then_output(|| {
+                GetObjectOutput::builder()
+                    .body(ByteStream::from_static(XMP.as_bytes()))
+                    .build()
+            });
+        let client = mock_client!(
+            aws_sdk_s3,
+            RuleMode::MatchAny,
+            [&list_xmp, &list_contents, &get_xmp]
+        );
+        let storage = storage(client);
+        let limit = NonZeroU64::new(1).unwrap();
+        let mut cursor = None;
+
+        for (index, expected_id) in IDS.iter().enumerate() {
+            let (contents, next_cursor) = storage
+                .scan_contents(&TagSchema::default(), limit, cursor)
+                .await
+                .unwrap();
+            assert_eq!(contents.len(), 1);
+            assert_eq!(contents[0].id().as_ref().to_string(), *expected_id);
+            cursor = next_cursor;
+            assert_eq!(cursor.is_some(), index < IDS.len() - 1);
+        }
+
+        assert_eq!(list_xmp.num_calls(), 3);
+        assert_eq!(list_contents.num_calls(), 3);
     }
 }
